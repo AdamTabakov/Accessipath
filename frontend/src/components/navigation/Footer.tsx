@@ -8,7 +8,7 @@ export function Footer() {
           <div className="max-w-md">
             <p className="font-display text-lg font-semibold text-silk">AccessiPath</p>
             <p className="mt-2 text-sm leading-relaxed text-ash">
-              Accessibility-first navigation for Toronto Metropolitan University. Routes that are
+              Accessibility-first navigation across Toronto. Routes that are
               not just short — but usable.
             </p>
           </div>
@@ -24,6 +24,15 @@ export function Footer() {
             </Link>
             <Link to="/about" className="hover:text-white">
               About
+            </Link>
+          </nav>
+          <nav aria-label="Legal" className="flex flex-col gap-2 text-sm text-platinum">
+            <p className="text-xs font-semibold uppercase tracking-widest text-ash">Legal</p>
+            <Link to="/privacy" className="hover:text-white">
+              Privacy Policy
+            </Link>
+            <Link to="/terms" className="hover:text-white">
+              Terms of Use
             </Link>
           </nav>
         </div>

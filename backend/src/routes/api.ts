@@ -5,6 +5,7 @@ import { geocode } from "../services/geocoding.js";
 import { savePhoto } from "../utils/uploads.js";
 import { HttpError } from "../middleware/error.js";
 import { apiLimiter, strictLimiter } from "../middleware/rateLimit.js";
+import { optionalAuth } from "../services/auth.js";
 import {
   aiBodySchema,
   nearbyQuerySchema,
@@ -52,9 +53,10 @@ export function createApiRouter(store: DataStore): Router {
     }
   });
 
-  router.get("/api/routes", async (req, res, next) => {
+  router.get("/api/routes", optionalAuth, async (req, res, next) => {
     try {
       const query = routesQuerySchema.parse(req.query);
+      const userId = res.locals.userId as string | undefined;
       const profile = profileFromDefaults({
         mobilityProfile: query.profile,
         avoidStairs:
@@ -73,7 +75,7 @@ export function createApiRouter(store: DataStore): Router {
         mode: query.mode,
         store,
       });
-      res.json({ routes, warnings, profile: await store.getProfile() });
+      res.json({ routes, warnings, profile: await store.getProfile(userId) });
     } catch (error) {
       next(error);
     }
@@ -177,18 +179,20 @@ export function createApiRouter(store: DataStore): Router {
     }
   });
 
-  router.get("/api/profile", async (_req, res, next) => {
+  router.get("/api/profile", optionalAuth, async (req, res, next) => {
     try {
-      res.json({ profile: await store.getProfile() });
+      const userId = res.locals.userId as string | undefined;
+      res.json({ profile: await store.getProfile(userId) });
     } catch (error) {
       next(error);
     }
   });
 
-  router.put("/api/profile", async (req, res, next) => {
+  router.put("/api/profile", optionalAuth, async (req, res, next) => {
     try {
       const body = profileBodySchema.parse(req.body);
-      const profile = await store.saveProfile(body);
+      const userId = res.locals.userId as string | undefined;
+      const profile = await store.saveProfile(body, userId);
       res.json({ profile });
     } catch (error) {
       next(error);

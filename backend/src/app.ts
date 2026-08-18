@@ -6,6 +6,7 @@ import helmet from "helmet";
 import type { DataStore } from "./services/store.js";
 import { config } from "./config.js";
 import { createApiRouter } from "./routes/api.js";
+import { createAuthRouter } from "./routes/auth.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 
 export async function createApp(store: DataStore): Promise<express.Express> {
@@ -24,13 +25,14 @@ export async function createApp(store: DataStore): Promise<express.Express> {
     cors({
       origin: config.corsOrigins,
       methods: ["GET", "POST", "PUT", "OPTIONS"],
-      allowedHeaders: ["Content-Type"],
+      allowedHeaders: ["Content-Type", "Authorization"],
     }),
   );
   app.use(express.json({ limit: config.bodyLimit }));
 
   app.use("/uploads", express.static(path.resolve(config.uploadDir), { maxAge: "1h" }));
 
+  app.use("/api/auth", createAuthRouter(store));
   app.use(createApiRouter(store));
 
   app.use(notFoundHandler);

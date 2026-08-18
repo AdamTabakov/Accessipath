@@ -1,8 +1,12 @@
 import { createApp } from "./app.js";
 import { createStore } from "./services/store.js";
-import { config } from "./config.js";
+import { config, DEV_JWT_SECRET } from "./config.js";
 
 async function main(): Promise<void> {
+  if (config.isProd && config.jwtSecret === DEV_JWT_SECRET) {
+    console.error("[auth] JWT_SECRET must be set to a strong secret in production.");
+    process.exit(1);
+  }
   const store = await createStore();
   const app = await createApp(store);
 

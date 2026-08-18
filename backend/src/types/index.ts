@@ -190,3 +190,32 @@ export interface Place {
   buildingId?: string;
   source: "tmu" | "nominatim";
 }
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  passwordHash: string;
+  verifiedAt?: string;
+  verificationCodeHash?: string;
+  verificationExpiresAt?: string;
+  createdAt: string;
+}
+
+export interface SafeUser {
+  id: string;
+  email: string;
+  name: string;
+  verified: boolean;
+  createdAt: string;
+}
+
+export function toSafeUser(user: User): SafeUser {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    verified: Boolean(user.verifiedAt),
+    createdAt: user.createdAt,
+  };
+}

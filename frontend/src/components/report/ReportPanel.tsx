@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import { Camera, MapPin, Upload, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { MapPin, Upload, X } from "lucide-react";
 import type {
   AccessibilityReport,
   AiObservation,
@@ -10,6 +10,8 @@ import { REPORT_TYPE_LABELS, MAX_REPORT_PHOTO_MB } from "../../utils/constants.j
 import { useAiAnalysis } from "../../hooks/useAiAnalysis.js";
 import * as api from "../../services/api.js";
 import { Button, ProgressBar, Select, TextArea, Spinner } from "../ui.js";
+import { SpotlightCard } from "../ui-kit/SpotlightCard.js";
+import FileUpload from "../kokonutui/file-upload.js";
 
 function toDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -78,7 +80,6 @@ export function ReportPanel({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
   const ai = useAiAnalysis();
 
   const hasLocation = pickedLocation !== null;
@@ -148,9 +149,10 @@ export function ReportPanel({
   }
 
   return (
-    <div className="rounded-card bg-charcoal p-6" aria-label="Report an accessibility issue">
-      <div className="mb-4 flex items-start justify-between">
-        <h3 className="text-xl font-semibold text-silk">Report an issue</h3>
+    <SpotlightCard className="rounded-card bg-charcoal p-6" color="rgba(41,151,255,0.1)">
+      <div aria-label="Report an accessibility issue">
+        <div className="mb-4 flex items-start justify-between">
+          <h3 className="text-xl font-semibold text-silk">Report an issue</h3>
         <button
           onClick={onClose}
           className="rounded-full bg-smoke p-2 text-ash hover:text-silk"
@@ -212,20 +214,18 @@ export function ReportPanel({
 
         <div>
           <p className="mb-1.5 text-sm font-medium text-silk">Photo (optional)</p>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            className="sr-only"
-            onChange={(e) => handleFile(e.target.files?.[0])}
-            aria-label="Upload a photo of the issue"
+          <FileUpload
+            acceptedFileTypes={["image/png", "image/jpeg"]}
+            maxFileSize={MAX_REPORT_PHOTO_MB * 1024 * 1024}
+            uploadDelay={0}
+            onUploadSuccess={(f) => handleFile(f)}
+            onFileRemove={() => {
+              setPhoto(null);
+              setPhotoPreview(null);
+              ai.clear();
+            }}
+            className="max-w-none"
           />
-          {!photo && (
-            <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}>
-              <Camera className="h-4 w-4" aria-hidden="true" />
-              Choose photo
-            </Button>
-          )}
 
           {photo && photoPreview && (
             <div className="mt-3 overflow-hidden rounded-card-sm border border-graphite">
@@ -288,7 +288,8 @@ export function ReportPanel({
 
           {photo && (
             <p className="mt-2 text-xs text-ash">
-              Max {MAX_REPORT_PHOTO_MB} MB · JPEG, PNG, WebP, GIF.
+              Max {MAX_REPORT_PHOTO_MB} MB · PNG or JPEG only. Photos are analyzed on your device and
+              never uploaded.
             </p>
           )}
         </div>
@@ -304,6 +305,7 @@ export function ReportPanel({
           Submit report
         </Button>
       </div>
-    </div>
+      </div>
+    </SpotlightCard>
   );
 }

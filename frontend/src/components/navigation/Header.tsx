@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { MapPin, Menu, X } from "lucide-react";
 import { Button } from "../ui.js";
+import ProfileDropdown from "../kokonutui/profile-dropdown.js";
+import { useAuth } from "../../hooks/useAuth.js";
 
 const LINKS = [
   { to: "/map", label: "Plan a route" },
@@ -13,6 +15,8 @@ const LINKS = [
 export function Header() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const { user, status, logout } = useAuth();
+  const isAuthenticated = status === "authenticated" && user !== null;
 
   return (
     <header className="sticky top-0 z-[1000] border-b border-graphite bg-true-black/90 backdrop-blur-xl">
@@ -47,6 +51,19 @@ export function Header() {
           <Button size="sm" onClick={() => navigate("/map")}>
             Get directions
           </Button>
+          {isAuthenticated ? (
+            <ProfileDropdown
+              name={user.name}
+              email={user.email}
+              onLogout={logout}
+            />
+          ) : (
+            status !== "loading" && (
+              <Button variant="outline" size="sm" onClick={() => navigate("/login")}>
+                Sign in
+              </Button>
+            )
+          )}
         </div>
 
         <button
@@ -73,6 +90,29 @@ export function Header() {
                 {link.label}
               </NavLink>
             ))}
+            {isAuthenticated ? (
+              <Button
+                variant="danger"
+                className="mt-2"
+                onClick={() => {
+                  setOpen(false);
+                  logout();
+                }}
+              >
+                Sign out
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="mt-2"
+                onClick={() => {
+                  setOpen(false);
+                  navigate("/login");
+                }}
+              >
+                Sign in
+              </Button>
+            )}
             <Button className="mt-2" onClick={() => navigate("/map")}>
               Get directions
             </Button>

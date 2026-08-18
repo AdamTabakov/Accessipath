@@ -1,6 +1,6 @@
 import pg from "pg";
 import { config } from "../src/config.js";
-import { queryOsmAccessibility, TMU_BBOX, type OsmElement } from "../src/services/osm.js";
+import { queryOsmAccessibility, TORONTO_BBOX, type OsmElement } from "../src/services/osm.js";
 
 const { Pool } = pg;
 
@@ -44,12 +44,13 @@ function featureFromElement(el: OsmElement): {
 }
 
 /**
- * Import accessibility-relevant OSM features around TMU via Overpass.
- * Data is treated as untrusted and validated; source = osm, ids preserved.
+ * Import accessibility-relevant OSM features across the City of Toronto via
+ * Overpass. Data is treated as untrusted and validated; source = osm,
+ * ids preserved.
  */
 async function main(): Promise<void> {
-  console.log(`Querying Overpass for TMU bbox (${config.overpassUrl})...`);
-  const result = await queryOsmAccessibility(TMU_BBOX);
+  console.log(`Querying Overpass for Toronto bbox (${config.overpassUrl})...`);
+  const result = await queryOsmAccessibility(TORONTO_BBOX);
 
   const nodeMap = new Map<number, { lat: number; lon: number }>();
   for (const el of result.elements) {

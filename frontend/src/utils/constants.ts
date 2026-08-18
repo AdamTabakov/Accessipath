@@ -7,7 +7,7 @@ import type {
   RouteMode,
 } from "../types/index.js";
 
-export const TMU_CENTER: Coordinates = { latitude: 43.6577, longitude: -79.3792 };
+export const TORONTO_CENTER: Coordinates = { latitude: 43.6532, longitude: -79.3832 };
 
 export const SLC: Coordinates = { latitude: 43.6577, longitude: -79.3802 };
 export const ENG: Coordinates = { latitude: 43.658112, longitude: -79.377632 };

@@ -10,6 +10,7 @@ import { RoutePlanner } from "../components/routing/RoutePlanner.js";
 import { RouteCard } from "../components/routing/RouteCard.js";
 import { ReportPanel } from "../components/report/ReportPanel.js";
 import { Button, Spinner } from "../components/ui.js";
+import { AnimatedTabs, ShimmerButton } from "../components/ui-kit/index.js";
 
 const SLC_PLACE: Place = {
   id: "slc",
@@ -122,23 +123,16 @@ export function MapPage() {
               <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-ash">
                 Rank routes by
               </legend>
-              <div className="grid grid-cols-3 gap-2">
-                {MODES.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => setMode(m.value)}
-                    aria-pressed={mode === m.value}
-                    className={`rounded-card-sm px-3 py-3 text-left transition-colors ${
-                      mode === m.value
-                        ? "border border-link-blue bg-link-blue/15"
-                        : "border border-graphite bg-smoke hover:border-platinum"
-                    }`}
-                  >
-                    <span className="block text-sm font-semibold text-silk">{m.label}</span>
-                    <span className="block text-[11px] text-ash">{m.hint}</span>
-                  </button>
-                ))}
-              </div>
+              <AnimatedTabs<RouteMode>
+                label="Route ranking mode"
+                value={mode}
+                onChange={setMode}
+                items={MODES.map((m) => ({ value: m.value, label: m.label, title: m.hint }))}
+                className="w-full [&>button]:flex-1"
+              />
+              <p className="mt-2 text-xs text-ash" aria-live="polite">
+                {MODES.find((m) => m.value === mode)?.hint}
+              </p>
             </fieldset>
 
             <label className="mt-4 flex items-center gap-2 text-sm text-platinum">
@@ -223,8 +217,8 @@ export function MapPage() {
           />
 
           {!reportOpen && (
-            <Button
-              className="absolute bottom-4 right-4 z-[1000]"
+            <ShimmerButton
+              className="absolute bottom-4 right-4 z-[1000] px-6 py-3 text-base"
               onClick={() => {
                 setReportOpen(true);
                 setPickingLocation(true);
@@ -232,7 +226,7 @@ export function MapPage() {
             >
               <Siren className="h-4 w-4" aria-hidden="true" />
               Report an issue
-            </Button>
+            </ShimmerButton>
           )}
 
           {reportOpen && (

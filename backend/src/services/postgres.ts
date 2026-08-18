@@ -6,10 +6,11 @@ import type {
   Building,
   Place,
   ProfilePreferences,
+  User,
 } from "../types/index.js";
 import { TMU_BUILDINGS, TMU_ACCESSIBILITY_POINTS } from "../data/tmuAccessibility.js";
 import { DEMO_REPORTS } from "../data/demoReports.js";
-import { TMU_PLACES } from "../data/places.js";
+import { DEFAULT_PLACES } from "../data/places.js";
 import { DEFAULT_PROFILE, reportTypeToPoint } from "./store.js";
 
 const { Pool } = pg;
@@ -93,6 +94,19 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   profile_json JSONB NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  verified_at TIMESTAMPTZ,
+  verification_code_hash TEXT,
+  verification_expires_at TIMESTAMPTZ,
+  profile_json JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS users_email_idx ON users (email);
 `;
 
 function pointGeog(lon: number, lat: number): string {
@@ -235,7 +249,7 @@ export class PostgresStore {
 
   async searchPlaces(query: string): Promise<Place[]> {
     const q = query.trim().toLowerCase();
-    const list = q ? TMU_PLACES.filter((p) => (p.label + " " + p.description).toLowerCase().includes(q)) : TMU_PLACES;
+    const list = q ? DEFAULT_PLACES.filter((p) => (p.label + " " + p.description).toLowerCase().includes(q)) : DEFAULT_PLACES;
     return list.slice(0, 8);
   }
 
@@ -405,7 +419,16 @@ export class PostgresStore {
     return observation;
   }
 
-  async getProfile(): Promise<ProfilePreferences> {
+  async getProfile(userId?: string): Promise<ProfilePreferences> {
+    if (userId) {
+      const { rows } = await this.pool.query<{ profile_json: string | null }>(
+        `SELECT profile_json FROM users WHERE id = $1`,
+        [userId],
+      );
+      if (rows[0]?.profile_json) {
+        return { ...DEFAULT_PROFILE, ...(JSON.parse(rows[0].profile_json) as ProfilePreferences) };
+      }
+    }
     const { rows } = await this.pool.query<{ profile_json: string }>(
       `SELECT profile_json FROM user_preferences WHERE id = 'default'`,
     );
@@ -413,13 +436,121 @@ export class PostgresStore {
     return { ...DEFAULT_PROFILE, ...(JSON.parse(rows[0]!.profile_json) as ProfilePreferences) };
   }
 
-  async saveProfile(profile: ProfilePreferences): Promise<ProfilePreferences> {
-    await this.pool.query(
-      `INSERT INTO user_preferences (id, profile_json) VALUES ('default', $1)
-       ON CONFLICT (id) DO UPDATE SET profile_json = $1, updated_at = now()`,
-      [JSON.stringify(profile)],
-    );
+  async saveProfile(profile: ProfilePreferences, userId?: string): Promise<ProfilePreferences> {
+    if (userId) {
+      await this.pool.query(
+        `UPDATE users SET profile_json = $1 WHERE id = $2`,
+        [JSON.stringify(profile), userId],
+      );
+    } else {
+      await this.pool.query(
+        `INSERT INTO user_preferences (id, profile_json) VALUES ('default', $1)
+         ON CONFLICT (id) DO UPDATE SET profile_json = $1, updated_at = now()`,
+        [JSON.stringify(profile)],
+      );
+    }
     return { ...profile };
+  }
+
+  async findUserByEmail(email: string): Promise<User | null> {
+    const { rows } = await this.pool.query(
+      `SELECT id, email, name, password_hash, verified_at, verification_code_hash,
+              verification_expires_at, created_at
+       FROM users WHERE email = $1`,
+      [email.toLowerCase()],
+    );
+    return rows[0] ? this.rowToUser(rows[0]) : null;
+  }
+
+  async getUserById(id: string): Promise<User | null> {
+    const { rows } = await this.pool.query(
+      `SELECT id, email, name, password_hash, verified_at, verification_code_hash,
+              verification_expires_at, created_at
+       FROM users WHERE id = $1`,
+      [id],
+    );
+    return rows[0] ? this.rowToUser(rows[0]) : null;
+  }
+
+  async createUser(input: {
+    id: string;
+    email: string;
+    name: string;
+    passwordHash: string;
+    verificationCodeHash: string;
+    verificationExpiresAt: string;
+    createdAt: string;
+  }): Promise<User> {
+    await this.pool.query(
+      `INSERT INTO users (id, email, name, password_hash, verification_code_hash, verification_expires_at, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [
+        input.id,
+        input.email.toLowerCase(),
+        input.name,
+        input.passwordHash,
+        input.verificationCodeHash,
+        input.verificationExpiresAt,
+        input.createdAt,
+      ],
+    );
+    const user = await this.getUserById(input.id);
+    if (!user) throw new Error("Failed to create user.");
+    return user;
+  }
+
+  async updateUser(
+    id: string,
+    patch: {
+      verifiedAt?: string;
+      verificationCodeHash?: string | null;
+      verificationExpiresAt?: string | null;
+    },
+  ): Promise<User> {
+    await this.pool.query(
+      `UPDATE users
+       SET verified_at = COALESCE($2, verified_at),
+           verification_code_hash = $3,
+           verification_expires_at = $4
+       WHERE id = $1`,
+      [
+        id,
+        patch.verifiedAt ?? null,
+        patch.verificationCodeHash === undefined
+          ? null
+          : patch.verificationCodeHash,
+        patch.verificationExpiresAt === undefined
+          ? null
+          : patch.verificationExpiresAt,
+      ],
+    );
+    const user = await this.getUserById(id);
+    if (!user) throw new Error("User not found.");
+    return user;
+  }
+
+  private rowToUser(row: {
+    id: string;
+    email: string;
+    name: string;
+    password_hash: string;
+    verified_at: string | null;
+    verification_code_hash: string | null;
+    verification_expires_at: string | null;
+    created_at: string;
+  }): User {
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      passwordHash: row.password_hash,
+      verifiedAt: row.verified_at ? new Date(row.verified_at).toISOString() : undefined,
+      verificationCodeHash: row.verification_code_hash ?? undefined,
+      verificationExpiresAt: row.verification_expires_at
+        ? new Date(row.verification_expires_at).toISOString()
+        : undefined,
+      createdAt: new Date(row.created_at).toISOString(),
+    };
   }
 
   async close(): Promise<void> {

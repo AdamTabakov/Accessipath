@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/* AccessiPath is always dark; map the dark: variant to the .dark class. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   /* ---- Apple-inspired dark system (see DESIGN.md) ---- */
@@ -20,6 +24,27 @@
   --color-status-inaccessible: #f87171;
   --color-status-unknown: #9ca3af;
   --color-status-warning: #fbbf24;
+
+  /* ---- shadcn/ui semantic tokens mapped onto the Apple dark system ---- */
+  --color-background: var(--color-true-black);
+  --color-foreground: var(--color-silk);
+  --color-card: var(--color-charcoal);
+  --color-card-foreground: var(--color-silk);
+  --color-popover: #101012;
+  --color-popover-foreground: var(--color-silk);
+  --color-primary: var(--color-apple-blue);
+  --color-primary-foreground: var(--color-white);
+  --color-secondary: var(--color-smoke);
+  --color-secondary-foreground: var(--color-silk);
+  --color-muted: var(--color-charcoal);
+  --color-muted-foreground: var(--color-ash);
+  --color-accent: #26262a;
+  --color-accent-foreground: var(--color-silk);
+  --color-destructive: #ff453a;
+  --color-destructive-foreground: var(--color-white);
+  --color-border: color-mix(in srgb, var(--color-graphite) 80%, transparent);
+  --color-input: var(--color-smoke);
+  --color-ring: var(--color-link-blue);
 
   /* ---- Typography ---- */
   --font-display: "SF Pro Display", "Inter", ui-sans-serif, system-ui, -apple-system,
@@ -182,4 +207,144 @@
 
 .ax-marker-blocked {
   background: #b64400;
+}
+
+/* ---- UI-kit + background animations ---- */
+
+.ax-map-route {
+  stroke-dasharray: 12 16;
+  animation: ax-map-route 4s linear infinite;
+}
+
+@keyframes ax-map-route {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+.ax-map-ping {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  animation: ax-map-ping 2.6s ease-out infinite;
+}
+
+@keyframes ax-map-ping {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.9;
+  }
+  70%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes ax-border-beam {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.ax-gradient-text {
+  background-image: linear-gradient(110deg, #2997ff 0%, #f5f5f7 40%, #0071e3 60%, #2997ff 100%);
+  animation: ax-gradient-text 6s linear infinite;
+}
+
+@keyframes ax-gradient-text {
+  to {
+    background-position: 200% center;
+  }
+}
+
+.ax-shiny-text {
+  background: linear-gradient(
+    120deg,
+    rgba(245, 245, 247, 0.35) 40%,
+    #ffffff 50%,
+    rgba(245, 245, 247, 0.35) 60%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ax-shiny-text var(--ax-shine-duration, 5000ms) linear infinite;
+}
+
+@keyframes ax-shiny-text {
+  to {
+    background-position: -200% center;
+  }
+}
+
+@keyframes ax-aurora {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(4%, 3%, 0) scale(1.15);
+  }
+}
+
+@keyframes ax-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes ax-orbit-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ax-orbit-mid {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes ax-orbit-fast {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Aceternity infinite-moving-cards scroller */
+@keyframes ax-scroll {
+  to {
+    transform: translate(calc(-50% - 0.5rem));
+  }
+}
+
+@utility animate-scroll {
+  animation: ax-scroll var(--animation-duration, 40s) var(--animation-direction, forwards) linear infinite;
+}
+
+/* ---- Reduced motion: keep the UI calm and usable ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .ax-map-route,
+  .ax-map-ping,
+  .ax-border-beam,
+  .ax-gradient-text,
+  .ax-shiny-text,
+  .ax-aurora,
+  .ax-marquee,
+  .ax-orbit-slow,
+  .ax-orbit-mid,
+  .ax-orbit-fast,
+  .animate-scroll {
+    animation: none !important;
+  }
 }

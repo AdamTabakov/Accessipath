@@ -37,7 +37,7 @@ export function usePlaceSearch(query: string): UsePlaceSearchResult {
         setResults(combined.results.slice(0, 8));
         setError(null);
       } catch (err) {
-        setError("Search unavailable. Try a TMU building like 'SLC' or 'ENG'.");
+        setError("Search unavailable. Try a Toronto place like 'Union Station' or 'CN Tower'.");
       } finally {
         setSearching(false);
       }

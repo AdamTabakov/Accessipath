@@ -104,10 +104,43 @@ export const nearbyQuerySchema = z.object({
   radius: z.coerce.number().int().min(10).max(2000).default(100),
 });
 
+export const emailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .max(254, "Email is too long.")
+  .email("Enter a valid email address.");
+
+export const signupBodySchema = z.object({
+  email: emailSchema,
+  name: z.string().trim().min(1, "Name is required.").max(80, "Name is too long."),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters.")
+    .max(100, "Password is too long."),
+});
+
+export const loginBodySchema = z.object({
+  email: emailSchema,
+  password: z.string().min(1, "Password is required.").max(100),
+});
+
+export const verifyBodySchema = z.object({
+  email: emailSchema,
+  code: z.string().regex(/^\d{6}$/, "Verification code must be 6 digits."),
+});
+
+export const resendBodySchema = z.object({
+  email: emailSchema,
+});
+
 export type RoutesQuery = z.infer<typeof routesQuerySchema>;
 export type ReportBody = z.infer<typeof reportBodySchema>;
 export type AiBody = z.infer<typeof aiBodySchema>;
 export type ProfileBody = z.infer<typeof profileBodySchema>;
+export type SignupBody = z.infer<typeof signupBodySchema>;
+export type LoginBody = z.infer<typeof loginBodySchema>;
+export type VerifyBody = z.infer<typeof verifyBodySchema>;
 export type MobilityProfileType = z.infer<typeof mobilityProfileSchema>;
 export type RouteModeType = z.infer<typeof routeModeSchema>;
 export type { MobilityProfile, RouteMode };

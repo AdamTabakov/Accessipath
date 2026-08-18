@@ -6,6 +6,10 @@
     "types": ["vite/client"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,

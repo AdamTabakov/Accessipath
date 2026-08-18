@@ -10,6 +10,7 @@ import {
 import type { ProfilePreferences } from "../types/index.js";
 import { DEFAULT_PROFILE } from "../utils/constants.js";
 import * as api from "../services/api.js";
+import { useAuth } from "./useAuth.js";
 
 const STORAGE_KEY = "accessipath.profile";
 
@@ -33,11 +34,16 @@ function loadLocal(): ProfilePreferences {
 }
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [profile, setProfile] = useState<ProfilePreferences>(loadLocal);
   const [ready, setReady] = useState(false);
 
+  const userId = user?.id ?? "";
+
   useEffect(() => {
     let cancelled = false;
+    setProfile({ ...DEFAULT_PROFILE });
+    setReady(false);
     api
       .getProfile()
       .then(({ profile: remote }) => {
@@ -53,7 +59,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [userId]);
 
   const updateProfile = useCallback((patch: Partial<ProfilePreferences>) => {
     setProfile((prev) => {

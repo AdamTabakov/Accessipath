@@ -39,13 +39,13 @@ export function RoutePlanner({
             label="Start"
             value={start}
             onChange={onStartChange}
-            placeholder="e.g. SLC, ENG, or an address"
+            placeholder="e.g. Union Station, CN Tower, or an address"
           />
           <SearchInput
             label="Destination"
             value={end}
             onChange={onEndChange}
-            placeholder="e.g. SLC, ENG, or an address"
+            placeholder="e.g. Union Station, CN Tower, or an address"
           />
         </div>
       </div>

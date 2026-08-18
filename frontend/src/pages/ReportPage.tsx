@@ -6,7 +6,7 @@ import * as api from "../services/api.js";
 import { MapCanvas } from "../components/map/MapCanvas.js";
 import { ReportPanel } from "../components/report/ReportPanel.js";
 import { StatusBadge } from "../components/ui.js";
-import { SLC } from "../utils/constants.js";
+import { TORONTO_CENTER } from "../utils/constants.js";
 import { formatDate } from "../utils/format.js";
 
 export function ReportPage() {
@@ -21,7 +21,7 @@ export function ReportPage() {
 
   useEffect(refreshReports, []);
 
-  const mapStart = { latitude: SLC.latitude, longitude: SLC.longitude, label: "TMU Campus" };
+  const mapStart = { latitude: TORONTO_CENTER.latitude, longitude: TORONTO_CENTER.longitude, label: "Toronto" };
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6">

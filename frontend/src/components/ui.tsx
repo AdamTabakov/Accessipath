@@ -17,9 +17,11 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { motion } from "framer-motion";
 import type { AccessibilityStatus, EvidenceSource } from "../types/index.js";
 import { SOURCE_LABELS } from "../utils/constants.js";
 import { formatPercent } from "../utils/format.js";
+import { NumberTicker } from "./ui-kit/NumberTicker.js";
 
 /* ---------------- Button ---------------- */
 
@@ -225,7 +227,10 @@ export function ScoreRing({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-display text-2xl font-semibold text-silk">{value}</span>
+        <NumberTicker
+          value={Math.round(value)}
+          className="font-display text-2xl font-semibold text-silk"
+        />
         <span className="text-[10px] uppercase tracking-wide text-ash">{label}</span>
       </div>
     </div>
@@ -260,9 +265,11 @@ export function ProgressBar({
         aria-label={label ?? "Progress"}
         className="h-2 w-full overflow-hidden rounded-full bg-smoke"
       >
-        <div
-          className="h-full rounded-full bg-apple-blue transition-all duration-300"
-          style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+        <motion.div
+          className="h-full rounded-full bg-apple-blue"
+          initial={{ width: 0 }}
+          animate={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+          transition={{ type: "spring", stiffness: 80, damping: 20 }}
         />
       </div>
     </div>

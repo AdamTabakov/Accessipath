@@ -9,10 +9,11 @@ import type {
   ProfilePreferences,
   ReportStatus,
   ReportType,
+  User,
 } from "../types/index.js";
 import { TMU_BUILDINGS, TMU_ACCESSIBILITY_POINTS } from "../data/tmuAccessibility.js";
 import { DEMO_REPORTS } from "../data/demoReports.js";
-import { TMU_PLACES } from "../data/places.js";
+import { DEFAULT_PLACES } from "../data/places.js";
 import { haversineDistance } from "../utils/spatial.js";
 
 export const DEFAULT_PROFILE: ProfilePreferences = {
@@ -42,8 +43,27 @@ export interface DataStore {
     aiObservation?: AiObservation;
   }): Promise<AccessibilityReport>;
   createAiObservation(observation: AiObservation): Promise<AiObservation>;
-  getProfile(): Promise<ProfilePreferences>;
-  saveProfile(profile: ProfilePreferences): Promise<ProfilePreferences>;
+  getProfile(userId?: string): Promise<ProfilePreferences>;
+  saveProfile(profile: ProfilePreferences, userId?: string): Promise<ProfilePreferences>;
+  findUserByEmail(email: string): Promise<User | null>;
+  getUserById(id: string): Promise<User | null>;
+  createUser(input: {
+    id: string;
+    email: string;
+    name: string;
+    passwordHash: string;
+    verificationCodeHash: string;
+    verificationExpiresAt: string;
+    createdAt: string;
+  }): Promise<User>;
+  updateUser(
+    id: string,
+    patch: {
+      verifiedAt?: string;
+      verificationCodeHash?: string | null;
+      verificationExpiresAt?: string | null;
+    },
+  ): Promise<User>;
 }
 
 function reportTypeToPoint(input: {
@@ -91,10 +111,13 @@ export class MemoryStore implements DataStore {
   readonly kind = "memory" as const;
 
   private buildings: Building[] = TMU_BUILDINGS;
-  private places: Place[] = TMU_PLACES;
+  private places: Place[] = DEFAULT_PLACES;
   private points: AccessibilityPoint[] = [...TMU_ACCESSIBILITY_POINTS];
   private reports: AccessibilityReport[] = [...DEMO_REPORTS];
   private profile: ProfilePreferences = { ...DEFAULT_PROFILE };
+  private profiles: Map<string, ProfilePreferences> = new Map();
+  private usersByEmail: Map<string, User> = new Map();
+  private usersById: Map<string, User> = new Map();
 
   async searchPlaces(query: string): Promise<Place[]> {
     const q = query.trim().toLowerCase();
@@ -166,13 +189,77 @@ export class MemoryStore implements DataStore {
     return observation;
   }
 
-  async getProfile(): Promise<ProfilePreferences> {
+  async getProfile(userId?: string): Promise<ProfilePreferences> {
+    if (userId) {
+      const saved = this.profiles.get(userId);
+      if (saved) return { ...saved };
+    }
     return { ...this.profile };
   }
 
-  async saveProfile(profile: ProfilePreferences): Promise<ProfilePreferences> {
+  async saveProfile(profile: ProfilePreferences, userId?: string): Promise<ProfilePreferences> {
+    if (userId) {
+      this.profiles.set(userId, { ...profile });
+      return this.getProfile(userId);
+    }
     this.profile = { ...profile };
     return this.getProfile();
+  }
+
+  async findUserByEmail(email: string): Promise<User | null> {
+    return this.usersByEmail.get(email.toLowerCase()) ?? null;
+  }
+
+  async getUserById(id: string): Promise<User | null> {
+    return this.usersById.get(id) ?? null;
+  }
+
+  async createUser(input: {
+    id: string;
+    email: string;
+    name: string;
+    passwordHash: string;
+    verificationCodeHash: string;
+    verificationExpiresAt: string;
+    createdAt: string;
+  }): Promise<User> {
+    const user: User = {
+      id: input.id,
+      email: input.email.toLowerCase(),
+      name: input.name,
+      passwordHash: input.passwordHash,
+      verificationCodeHash: input.verificationCodeHash,
+      verificationExpiresAt: input.verificationExpiresAt,
+      createdAt: input.createdAt,
+    };
+    this.usersByEmail.set(user.email, user);
+    this.usersById.set(user.id, user);
+    return user;
+  }
+
+  async updateUser(
+    id: string,
+    patch: {
+      verifiedAt?: string;
+      verificationCodeHash?: string | null;
+      verificationExpiresAt?: string | null;
+    },
+  ): Promise<User> {
+    const existing = this.usersById.get(id);
+    if (!existing) throw new Error("User not found.");
+    const updated: User = {
+      ...existing,
+      ...(patch.verifiedAt !== undefined ? { verifiedAt: patch.verifiedAt } : {}),
+      ...(patch.verificationCodeHash !== undefined
+        ? { verificationCodeHash: patch.verificationCodeHash ?? undefined }
+        : {}),
+      ...(patch.verificationExpiresAt !== undefined
+        ? { verificationExpiresAt: patch.verificationExpiresAt ?? undefined }
+        : {}),
+    };
+    this.usersByEmail.set(updated.email, updated);
+    this.usersById.set(id, updated);
+    return updated;
   }
 }
 

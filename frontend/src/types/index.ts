@@ -196,3 +196,36 @@ export interface AiAnalysisResult {
   modelVersion: string;
   error?: string;
 }
+
+/** Accessibility preferences inferred from a natural-language route request. */
+export interface AiRouteIntent {
+  avoidStairs: boolean;
+  preferRamps: boolean;
+  preferElevators: boolean;
+  preferSmoothSurface: boolean;
+  maxSlope: "flat" | "moderate" | "steep" | "any";
+  mode: RouteMode | null;
+}
+
+export interface SafeUser {
+  id: string;
+  email: string;
+  name: string;
+  verified: boolean;
+  createdAt: string;
+}
+
+export interface AuthUserResponse {
+  token: string;
+  user: SafeUser;
+}
+
+export interface SignupResponse {
+  user: SafeUser;
+  devCode?: string;
+  message?: string;
+}
+
+export interface VerifyResponse {
+  user: SafeUser;
+}

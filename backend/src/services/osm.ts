@@ -13,8 +13,11 @@ export interface OsmQueryResult {
   elements: OsmElement[];
 }
 
-/** Bounding box for the TMU campus (Toronto Metropolitan University). */
+/** Bounding box for the TMU campus (Toronto Metropolitan University) - used for quick local imports. */
 export const TMU_BBOX = { minLat: 43.652, minLon: -79.386, maxLat: 43.661, maxLon: -79.373 };
+
+/** Bounding box for the City of Toronto (whole-city import). */
+export const TORONTO_BBOX = { minLat: 43.581, minLon: -79.639, maxLat: 43.855, maxLon: -79.116 };
 
 function buildQuery(bbox: { minLat: number; minLon: number; maxLat: number; maxLon: number }): string {
   return `[out:json][timeout:60];
@@ -33,10 +36,11 @@ out skel qt;`;
 }
 
 /**
- * Query Overpass for accessibility-relevant OSM features around TMU.
- * Result is treated as untrusted input and validated before use.
+ * Query Overpass for accessibility-relevant OSM features across the City of
+ * Toronto by default. Result is treated as untrusted input and validated
+ * before use.
  */
-export async function queryOsmAccessibility(bbox = TMU_BBOX): Promise<OsmQueryResult> {
+export async function queryOsmAccessibility(bbox = TORONTO_BBOX): Promise<OsmQueryResult> {
   const url = new URL(config.overpassUrl);
   const res = await fetch(url, {
     method: "POST",

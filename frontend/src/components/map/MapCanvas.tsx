@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { MapContainer, TileLayer, useMap, Marker, Tooltip } from "react-leaflet";
 import { divIcon } from "leaflet";
 import type { AccessibilityReport, Coordinates, EvidenceItem, RouteResult } from "../../types/index.js";
-import { TMU_CENTER } from "../../utils/constants.js";
+import { TORONTO_CENTER } from "../../utils/constants.js";
 import { EvidenceMarkers, PlaceMarker, RouteLayer, UnknownSections, endIcon, startIcon } from "./layers.js";
 
 const TILE_URL =
@@ -87,7 +87,7 @@ export function MapCanvas({
   return (
     <div className="relative h-full w-full overflow-hidden rounded-card border border-graphite">
       <MapContainer
-        center={[TMU_CENTER.latitude, TMU_CENTER.longitude]}
+        center={[TORONTO_CENTER.latitude, TORONTO_CENTER.longitude]}
         zoom={15}
         scrollWheelZoom
         className="h-full w-full"

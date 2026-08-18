@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { ChevronDown, ChevronUp, Info, ShieldCheck } from "lucide-react";
 import type { ConfidenceBreakdown, EvidenceItem, RouteResult } from "../../types/index.js";
 import { SourceBadge, StatusBadge, SeverityBadge } from "../ui.js";
@@ -89,9 +90,11 @@ export function ConfidencePanel({ route }: { route: RouteResult }) {
                 aria-label={meta.label}
                 className="h-1.5 w-full overflow-hidden rounded-full bg-smoke"
               >
-                <div
+                <motion.div
                   className="h-full rounded-full bg-link-blue"
-                  style={{ width: `${value}%` }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${value}%` }}
+                  transition={{ type: "spring", stiffness: 70, damping: 20 }}
                 />
               </div>
               <p className="mt-1 text-xs text-ash">{meta.hint}</p>
