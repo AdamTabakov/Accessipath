@@ -1,0 +1,28 @@
+{
+  "name": "accessipath",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Accessibility-first navigation — a Google Maps for people with mobility needs.",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:backend dev:frontend",
+    "dev:backend": "npm --workspace backend run dev",
+    "dev:frontend": "npm --workspace frontend run dev",
+    "build": "npm run build --workspace backend && npm run build --workspace frontend",
+    "start": "npm run start --workspace backend",
+    "test": "npm run test --workspace backend",
+    "typecheck": "npm run typecheck --workspace backend && npm run typecheck --workspace frontend",
+    "seed": "npm run seed --workspace backend",
+    "import:osm": "npm run import:osm --workspace backend",
+    "import:tmu": "npm run import:tmu --workspace backend"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

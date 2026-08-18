@@ -1,0 +1,185 @@
+@import "tailwindcss";
+
+@theme {
+  /* ---- Apple-inspired dark system (see DESIGN.md) ---- */
+  --color-true-black: #000000;
+  --color-charcoal: #1d1d1f;
+  --color-smoke: #333336;
+  --color-graphite: #424245;
+  --color-ash: #86868b;
+  --color-platinum: #cccccc;
+  --color-silk: #f5f5f7;
+  --color-white: #ffffff;
+  --color-apple-blue: #0071e3;
+  --color-link-blue: #2997ff;
+  --color-deep-link: #0066cc;
+  --color-ember: #b64400;
+
+  /* ---- Accessibility status (always paired with icons + text) ---- */
+  --color-status-accessible: #34d399;
+  --color-status-inaccessible: #f87171;
+  --color-status-unknown: #9ca3af;
+  --color-status-warning: #fbbf24;
+
+  /* ---- Typography ---- */
+  --font-display: "SF Pro Display", "Inter", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: "SF Pro Text", "Inter", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* ---- Shape ---- */
+  --radius-card: 28px;
+  --radius-card-sm: 18px;
+  --radius-pill: 9999px;
+  --radius-input: 210px;
+}
+
+@layer base {
+  * {
+    border-color: color-mix(in srgb, var(--color-ash) 30%, transparent);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-true-black);
+    color: var(--color-silk);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-link-blue);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+
+  ::selection {
+    background: var(--color-apple-blue);
+    color: var(--color-white);
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+  .glass-bar {
+    background: rgb(66 66 69 / 0.72);
+    backdrop-filter: blur(20px) saturate(1);
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* ---- Leaflet overrides for the dark chrome ---- */
+.leaflet-container {
+  background: #1d1d1f;
+  font-family: var(--font-body);
+  border-radius: 28px;
+}
+
+.leaflet-control-zoom {
+  border: none !important;
+  border-radius: 14px !important;
+  overflow: hidden;
+  box-shadow: none !important;
+}
+
+.leaflet-control-zoom a {
+  background: #1d1d1f !important;
+  color: #f5f5f7 !important;
+  border-bottom: 1px solid #333336 !important;
+}
+
+.leaflet-control-attribution {
+  background: rgb(0 0 0 / 0.6) !important;
+  color: #86868b !important;
+  font-size: 10px !important;
+}
+
+.leaflet-control-attribution a {
+  color: #2997ff !important;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: #1d1d1f !important;
+  color: #f5f5f7 !important;
+  border-radius: 18px !important;
+  box-shadow: none !important;
+}
+
+.leaflet-popup-content {
+  color: #f5f5f7;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  color: #86868b !important;
+}
+
+/* Custom divIcon markers */
+.ax-marker {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+
+.ax-marker-start {
+  background: #0071e3;
+  width: 30px;
+  height: 30px;
+}
+
+.ax-marker-end {
+  background: #0071e3;
+  width: 30px;
+  height: 30px;
+}
+
+.ax-marker-accessible {
+  background: #0f9d5a;
+}
+
+.ax-marker-inaccessible {
+  background: #c22;
+}
+
+.ax-marker-unknown {
+  background: #666;
+}
+
+.ax-marker-blocked {
+  background: #b64400;
+}

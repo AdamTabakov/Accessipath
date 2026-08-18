@@ -1,0 +1,64 @@
+# Render Blueprint for AccessiPath
+# Deploy: backend web service + frontend static site + PostGIS database + scheduled OSM refresh job.
+
+databases:
+  - name: accessipath-db
+    databaseName: accessipath
+    user: accessipath
+    plan: free
+
+services:
+  # ---------- Backend API ----------
+  - type: web
+    name: accessipath-api
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: accessipath-db
+          property: connectionString
+      - key: CORS_ORIGINS
+        sync: false
+      - key: OSRM_URL
+        value: https://router.project-osrm.org
+      - key: NOMINATIM_URL
+        value: https://nominatim.openstreetmap.org
+      - key: OVERPASS_URL
+        value: https://overpass-api.de/api/interpreter
+
+  # ---------- Frontend static site ----------
+  - type: web
+    name: accessipath
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_OSM_TILE_URL
+        value: https://tile.openstreetmap.org/{z}/{x}/{y}.png
+
+# ---------- Scheduled job: refresh OSM accessibility import (Render Workflows/Cron) ----------
+jobs:
+  - type: scheduledJob
+    name: accessipath-osm-refresh
+    runtime: node
+    rootDir: backend
+    schedule: "@daily"
+    buildCommand: npm install
+    startCommand: npx tsx scripts/import-osm.ts --update
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: accessipath-db
+          property: connectionString
+      - key: OVERPASS_URL
+        value: https://overpass-api.de/api/interpreter
