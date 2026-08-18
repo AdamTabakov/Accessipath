@@ -109,6 +109,43 @@ describe("API", () => {
     expect(res.status).toBe(400);
   });
 
+  it("accepts a valid PNG photo upload", async () => {
+    const png =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const res = await request(app).post("/api/reports").send({
+      type: "blocked_ramp",
+      description: "Ramp blocked by scaffolding.",
+      latitude: 43.6577,
+      longitude: -79.3802,
+      photo: png,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.report.photoUrl).toMatch(/^\/uploads\//);
+  });
+
+  it("rejects a photo whose bytes do not match a supported image signature", async () => {
+    const html = Buffer.from("<html><body>not an image</body></html>").toString("base64");
+    const res = await request(app).post("/api/reports").send({
+      type: "blocked_ramp",
+      description: "Attempt to smuggle non-image content.",
+      latitude: 43.6577,
+      longitude: -79.3802,
+      photo: `data:image/png;base64,${html}`,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a photo with corrupted (non-matching) magic bytes", async () => {
+    const res = await request(app).post("/api/reports").send({
+      type: "blocked_ramp",
+      description: "Corrupted image bytes.",
+      latitude: 43.6577,
+      longitude: -79.3802,
+      photo: "data:image/png;base64,AAAA",
+    });
+    expect(res.status).toBe(400);
+  });
+
   it("gets and updates the profile", async () => {
     const getRes = await request(app).get("/api/profile");
     expect(getRes.status).toBe(200);
