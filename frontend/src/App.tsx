@@ -1,25 +1,54 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { SkipLink } from "./components/navigation/SkipLink.js";
 import { Header } from "./components/navigation/Header.js";
 import { Footer } from "./components/navigation/Footer.js";
 import { LandingPage } from "./pages/LandingPage.js";
-import { MapPage } from "./pages/MapPage.js";
-import { PreferencesPage } from "./pages/PreferencesPage.js";
-import { ReportPage } from "./pages/ReportPage.js";
-import { AboutPage } from "./pages/AboutPage.js";
-import { PrivacyPage } from "./pages/PrivacyPage.js";
-import { TermsPage } from "./pages/TermsPage.js";
-import { NotFoundPage } from "./pages/NotFoundPage.js";
-import { SignupPage } from "./pages/SignupPage.js";
-import { LoginPage } from "./pages/LoginPage.js";
-import { VerifyPage } from "./pages/VerifyPage.js";
+import { Spinner } from "./components/ui.js";
 import { AuthProvider } from "./hooks/useAuth.js";
 import { ProfileProvider } from "./hooks/useProfile.js";
+
+const MapPage = lazy(() => import("./pages/MapPage.js").then((m) => ({ default: m.MapPage })));
+const PreferencesPage = lazy(() =>
+  import("./pages/PreferencesPage.js").then((m) => ({ default: m.PreferencesPage })),
+);
+const ReportPage = lazy(() =>
+  import("./pages/ReportPage.js").then((m) => ({ default: m.ReportPage })),
+);
+const AboutPage = lazy(() =>
+  import("./pages/AboutPage.js").then((m) => ({ default: m.AboutPage })),
+);
+const PrivacyPage = lazy(() =>
+  import("./pages/PrivacyPage.js").then((m) => ({ default: m.PrivacyPage })),
+);
+const TermsPage = lazy(() =>
+  import("./pages/TermsPage.js").then((m) => ({ default: m.TermsPage })),
+);
+const SignupPage = lazy(() =>
+  import("./pages/SignupPage.js").then((m) => ({ default: m.SignupPage })),
+);
+const LoginPage = lazy(() =>
+  import("./pages/LoginPage.js").then((m) => ({ default: m.LoginPage })),
+);
+const VerifyPage = lazy(() =>
+  import("./pages/VerifyPage.js").then((m) => ({ default: m.VerifyPage })),
+);
+const NotFoundPage = lazy(() =>
+  import("./pages/NotFoundPage.js").then((m) => ({ default: m.NotFoundPage })),
+);
 
 function HeaderGate() {
   const { pathname } = useLocation();
   if (pathname === "/") return null;
   return <Header />;
+}
+
+function PageFallback() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <Spinner label="Loading..." />
+    </div>
+  );
 }
 
 export default function App() {
@@ -31,19 +60,21 @@ export default function App() {
             <SkipLink />
             <HeaderGate />
             <main id="main" className="flex-1">
-              <Routes>
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/map" element={<MapPage />} />
-                <Route path="/preferences" element={<PreferencesPage />} />
-                <Route path="/report" element={<ReportPage />} />
-                <Route path="/about" element={<AboutPage />} />
-                <Route path="/privacy" element={<PrivacyPage />} />
-                <Route path="/terms" element={<TermsPage />} />
-                <Route path="/signup" element={<SignupPage />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/verify" element={<VerifyPage />} />
-                <Route path="*" element={<NotFoundPage />} />
-              </Routes>
+              <Suspense fallback={<PageFallback />}>
+                <Routes>
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/map" element={<MapPage />} />
+                  <Route path="/preferences" element={<PreferencesPage />} />
+                  <Route path="/report" element={<ReportPage />} />
+                  <Route path="/about" element={<AboutPage />} />
+                  <Route path="/privacy" element={<PrivacyPage />} />
+                  <Route path="/terms" element={<TermsPage />} />
+                  <Route path="/signup" element={<SignupPage />} />
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/verify" element={<VerifyPage />} />
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </Suspense>
             </main>
             <Footer />
           </div>

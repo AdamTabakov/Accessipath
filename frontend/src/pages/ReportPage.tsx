@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Clock, MapPin, ThumbsDown, ThumbsUp, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock,
+  MapPin,
+  ShieldCheck,
+  ThumbsDown,
+  ThumbsUp,
+  XCircle,
+} from "lucide-react";
 import type { AccessibilityReport, Coordinates, ReportStatus, VoteDirection } from "../types/index.js";
 import { useProfile } from "../hooks/useProfile.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -97,6 +105,62 @@ function VoteControls({
   );
 }
 
+const VERIFY_UPVOTES = 3;
+const REJECT_DOWNVOTES = 3;
+
+/** Shows how close a pending report is to being verified or rejected. */
+function VerificationProgress({ report }: { report: AccessibilityReport }) {
+  if (report.status === "verified" || report.status === "rejected") return null;
+  const up = Math.min(report.upvotes, VERIFY_UPVOTES) / VERIFY_UPVOTES;
+  const down = Math.min(report.downvotes, REJECT_DOWNVOTES) / REJECT_DOWNVOTES;
+  return (
+    <div className="mt-auto space-y-2 border-t border-graphite pt-3">
+      <div>
+        <div className="flex items-center justify-between text-[11px] text-ash">
+          <span>
+            Upvotes {report.upvotes}/{VERIFY_UPVOTES} to verify
+          </span>
+          <span>{Math.round(up * 100)}%</span>
+        </div>
+        <div
+          className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-smoke"
+          role="progressbar"
+          aria-valuenow={report.upvotes}
+          aria-valuemin={0}
+          aria-valuemax={VERIFY_UPVOTES}
+          aria-label="Upvotes toward verification"
+        >
+          <div
+            className="h-full rounded-full bg-status-accessible transition-all"
+            style={{ width: `${up * 100}%` }}
+          />
+        </div>
+      </div>
+      <div>
+        <div className="flex items-center justify-between text-[11px] text-ash">
+          <span>
+            Downvotes {report.downvotes}/{REJECT_DOWNVOTES} to reject
+          </span>
+          <span>{Math.round(down * 100)}%</span>
+        </div>
+        <div
+          className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-smoke"
+          role="progressbar"
+          aria-valuenow={report.downvotes}
+          aria-valuemin={0}
+          aria-valuemax={REJECT_DOWNVOTES}
+          aria-label="Downvotes toward rejection"
+        >
+          <div
+            className="h-full rounded-full bg-status-inaccessible transition-all"
+            style={{ width: `${down * 100}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ReportPage() {
   const { profile } = useProfile();
   const { user } = useAuth();
@@ -135,10 +199,38 @@ export function ReportPage() {
       </h1>
       <p className="mt-3 max-w-2xl text-lg text-platinum">
         A broken elevator, a blocked ramp, construction, or a missing curb ramp. Reports affect route
-        scoring immediately. Reports are community-verified: <strong className="text-silk">3 upvotes</strong>{" "}
-        (with a 2:1 up:down ratio) mark them verified; <strong className="text-silk">3 downvotes</strong> hide
-        them. Verified reports decay back to pending after 90 days unless re-confirmed.
+        scoring immediately. Anyone can help confirm that a report is real.
       </p>
+
+      <section
+        aria-label="How report verification works"
+        className="mt-6 max-w-3xl rounded-card border border-graphite bg-charcoal p-5"
+      >
+        <h2 className="flex items-center gap-2 text-base font-semibold text-silk">
+          <ShieldCheck className="h-4 w-4 text-status-accessible" aria-hidden="true" />
+          How reports get verified
+        </h2>
+        <ul className="mt-3 grid gap-3 text-sm text-platinum md:grid-cols-3">
+          <li className="rounded-card-sm bg-smoke p-3">
+            <strong className="text-silk">3 upvotes</strong> (with a 2:1 up-to-down ratio) mark a
+            report <strong className="text-status-accessible">verified</strong> — it is treated as
+            trustworthy in route scoring.
+          </li>
+          <li className="rounded-card-sm bg-smoke p-3">
+            <strong className="text-silk">3 downvotes</strong> (outnumbering upvotes) mark a report{" "}
+            <strong className="text-status-inaccessible">rejected</strong> — it is hidden from route
+            calculations.
+          </li>
+          <li className="rounded-card-sm bg-smoke p-3">
+            Verified reports <strong className="text-silk">decay back to pending after 90 days</strong>{" "}
+            unless re-confirmed, so stale reports can't stay verified forever.
+          </li>
+        </ul>
+        <p className="mt-3 text-xs text-ash">
+          Each signed-in account gets one vote per report (toggle it off or change it any time).
+          Vote honestly — these reports shape everyone's routes.
+        </p>
+      </section>
 
       <div className="mt-10 grid gap-6 lg:grid-cols-2">
         <div className="flex flex-col gap-4">
@@ -201,6 +293,7 @@ export function ReportPage() {
                     <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
                     {r.latitude.toFixed(5)}, {r.longitude.toFixed(5)}
                   </p>
+                  <VerificationProgress report={r} />
                   <div className="mt-auto flex items-center justify-between gap-2 border-t border-graphite pt-3">
                     <VoteControls
                       report={r}

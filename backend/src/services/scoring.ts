@@ -180,23 +180,48 @@ export function buildEvidence(
     });
   }
 
+  // Bucket nearby points into a uniform grid so coverage lookup is near O(1)
+  // instead of scanning every point for every sample.
+  const cellSizeDeg = COVERAGE_RADIUS_M / 111000;
+  const grid = new Map<string, AccessibilityPoint[]>();
+  for (const point of nearPoints) {
+    const key = `${Math.floor(point.latitude / cellSizeDeg)},${Math.floor(
+      point.longitude / cellSizeDeg,
+    )}`;
+    const bucket = grid.get(key);
+    if (bucket) bucket.push(point);
+    else grid.set(key, [point]);
+  }
+
   const samples = resamplePolyline(route.geometry, SAMPLE_INTERVAL_M);
   let unknownCoordinates: Coordinates[] = [];
   let knownSamples = 0;
+  const latRange = Math.ceil((COVERAGE_RADIUS_M / 111000) / cellSizeDeg);
   for (const sample of samples) {
-    let minDistance = Number.POSITIVE_INFINITY;
-    for (const point of nearPoints) {
-      const d = haversineDistance(sample, {
-        latitude: point.latitude,
-        longitude: point.longitude,
-      });
-      if (d < minDistance) minDistance = d;
+    const cx = Math.floor(sample.latitude / cellSizeDeg);
+    const cy = Math.floor(sample.longitude / cellSizeDeg);
+    // Longitude degrees-per-metre shrink with cos(latitude), so widen the
+    // search radius in the longitude axis to guarantee no in-range point is
+    // missed (exact same result as the old all-points scan).
+    const lonRange = Math.ceil(
+      (COVERAGE_RADIUS_M / (111000 * Math.cos((sample.latitude * Math.PI) / 180))) /
+        cellSizeDeg,
+    );
+    let known = false;
+    for (let dx = -latRange; dx <= latRange && !known; dx++) {
+      for (let dy = -lonRange; dy <= lonRange && !known; dy++) {
+        const bucket = grid.get(`${cx + dx},${cy + dy}`);
+        if (!bucket) continue;
+        for (const point of bucket) {
+          if (haversineDistance(sample, point) <= COVERAGE_RADIUS_M) {
+            known = true;
+            break;
+          }
+        }
+      }
     }
-    if (minDistance <= COVERAGE_RADIUS_M) {
-      knownSamples += 1;
-    } else {
-      unknownCoordinates.push(sample);
-    }
+    if (known) knownSamples += 1;
+    else unknownCoordinates.push(sample);
   }
   factors.unknownSections = samples.length - knownSamples;
   factors.totalSamples = samples.length;

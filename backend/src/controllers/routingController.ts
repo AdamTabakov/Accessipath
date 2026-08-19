@@ -19,11 +19,19 @@ const resultCache = createTtlCache<string, { routes: RouteResult[]; warnings: st
   5 * 60_000,
 );
 
-function resultCacheKey(
+/**
+ * Scored-but-unsorted results cached per origin/destination + profile (mode
+ * independent). Switching the sort mode only re-ranks these, skipping the
+ * expensive corridor fetch + evidence + scoring work entirely.
+ */
+const scoredCache = createTtlCache<string, { results: RouteResult[]; warnings: string[] }>(
+  5 * 60_000,
+);
+
+function baseRouteCacheKey(
   start: { latitude: number; longitude: number },
   end: { latitude: number; longitude: number },
   profile: ProfilePreferences,
-  mode: RouteMode,
 ): string {
   return JSON.stringify([
     start.latitude.toFixed(4),
@@ -37,16 +45,25 @@ function resultCacheKey(
     profile.maxSlope,
     profile.preferSmoothSurface,
     profile.maxWalkDistanceMeters,
-    mode,
   ]);
+}
+
+function resultCacheKey(
+  start: { latitude: number; longitude: number },
+  end: { latitude: number; longitude: number },
+  profile: ProfilePreferences,
+  mode: RouteMode,
+): string {
+  return `${baseRouteCacheKey(start, end, profile)}|${mode}`;
 }
 
 function sortKey(
   mode: RouteMode,
-  r: { accessibilityScore: number; distanceMeters: number; durationMinutes: number },
+  r: { accessibilityScore: number; dataConfidence: number; distanceMeters: number; durationMinutes: number },
 ): number {
   if (mode === "most_accessible") {
-    return -(r.accessibilityScore * 1000 - r.distanceMeters);
+    // Accessibility strictly dominates; confidence breaks near-ties; distance last.
+    return -(r.accessibilityScore * 10000 + r.dataConfidence - r.distanceMeters / 10);
   }
   if (mode === "fastest") {
     return r.durationMinutes * 60 + r.distanceMeters / 50;
@@ -79,89 +96,99 @@ export async function buildRoutes(opts: BuildRoutesOptions): Promise<{
   const cachedResult = resultCache.get(cacheKey);
   if (cachedResult) return cachedResult;
 
-  const emptyData = () => ({ points: [] as AccessibilityPoint[], ways: [] as Coordinates[][] });
-  const corridorPromise =
-    config.nodeEnv === "test"
-      ? Promise.resolve(emptyData())
-      : fetchCorridorData(start, end).catch((error) => {
-          console.error(
-            "[routing] OSM corridor fetch failed:",
-            error instanceof Error ? error.message : error,
-          );
-          return emptyData();
-        });
+  const scoredKey = baseRouteCacheKey(start, end, profile);
+  let scored = scoredCache.get(scoredKey);
+  if (!scored) {
+    const emptyData = () => ({ points: [] as AccessibilityPoint[], ways: [] as Coordinates[][] });
+    const corridorPromise =
+      config.nodeEnv === "test"
+        ? Promise.resolve(emptyData())
+        : fetchCorridorData(start, end).catch((error) => {
+            console.error(
+              "[routing] OSM corridor fetch failed:",
+              error instanceof Error ? error.message : error,
+            );
+            return emptyData();
+          });
 
-  const corridor = await corridorPromise;
-  const city = config.nodeEnv === "test" ? emptyData() : getRegionalAccessibility(start, end);
+    const corridor = await corridorPromise;
+    const city = config.nodeEnv === "test" ? emptyData() : getRegionalAccessibility(start, end);
 
-  const [candidates, storePoints] = await Promise.all([
-    getCandidateRoutes(start, end, corridor.ways),
-    store.getAllAccessibilityPoints(),
-  ]);
-  const { routes, provider, warning } = candidates;
+    const [candidates, storePoints] = await Promise.all([
+      getCandidateRoutes(start, end, corridor.ways),
+      store.getAllAccessibilityPoints(),
+    ]);
+    const { routes, provider, warning } = candidates;
 
-  const merged = [...city.points, ...corridor.points, ...storePoints];
-  const seenIds = new Set<string>();
-  const points = merged.filter((p) => (seenIds.has(p.id) ? false : (seenIds.add(p.id), true)));
+    const merged = [...city.points, ...corridor.points, ...storePoints];
+    const seenIds = new Set<string>();
+    const points = merged.filter((p) => (seenIds.has(p.id) ? false : (seenIds.add(p.id), true)));
 
   const results: RouteResult[] = routes.map((route) => {
-    const evidenceResult = buildEvidence(route, points, profile);
-    const scored = scoreRoute(route, evidenceResult, profile);
-    const confidenceResult = computeConfidence({
-      evidence: evidenceResult.evidence,
-      factors: evidenceResult.factors,
-      provider,
-      profile,
+      const evidenceResult = buildEvidence(route, points, profile);
+      const routeScore = scoreRoute(route, evidenceResult, profile);
+      const confidenceResult = computeConfidence({
+        evidence: evidenceResult.evidence,
+        factors: evidenceResult.factors,
+        provider,
+        profile,
+      });
+
+      if (
+        profile.maxWalkDistanceMeters > 0 &&
+        route.distanceMeters > profile.maxWalkDistanceMeters
+      ) {
+        routeScore.penalties.push({
+          label: "Longer than your preferred walking distance",
+          points: 10,
+          severity: "info",
+        });
+        routeScore.score = Math.max(0, routeScore.score - 10);
+      }
+
+      return {
+        id: route.id,
+        mode,
+        provider: route.provider,
+        distanceMeters: route.distanceMeters,
+        durationMinutes: route.durationMinutes,
+        accessibilityScore: routeScore.score,
+        dataConfidence: confidenceResult.confidence,
+        confidenceBreakdown: confidenceResult.breakdown,
+        factors: evidenceResult.factors,
+        penalties: routeScore.penalties,
+        bonuses: routeScore.bonuses,
+        evidence: evidenceResult.evidence,
+        unknownCoordinates: evidenceResult.unknownCoordinates,
+        geometry: route.geometry,
+      };
     });
 
-    if (
-      profile.maxWalkDistanceMeters > 0 &&
-      route.distanceMeters > profile.maxWalkDistanceMeters
-    ) {
-      scored.penalties.push({
-        label: "Longer than your preferred walking distance",
-        points: 10,
-        severity: "info",
-      });
-      scored.score = Math.max(0, scored.score - 10);
+    const warnings: string[] = [];
+    if (warning) warnings.push(warning);
+    const lowConfidence = results.some((r) => r.dataConfidence < 50);
+    if (lowConfidence) {
+      warnings.push(
+        "Some route sections have little accessibility data. Unknown sections do not mean inaccessible - they mean we need more information.",
+      );
     }
-
-    return {
-      id: route.id,
-      mode,
-      provider: route.provider,
-      distanceMeters: route.distanceMeters,
-      durationMinutes: route.durationMinutes,
-      accessibilityScore: scored.score,
-      dataConfidence: confidenceResult.confidence,
-      confidenceBreakdown: confidenceResult.breakdown,
-      factors: evidenceResult.factors,
-      penalties: scored.penalties,
-      bonuses: scored.bonuses,
-      evidence: evidenceResult.evidence,
-      unknownCoordinates: evidenceResult.unknownCoordinates,
-      geometry: route.geometry,
-    };
-  });
-
-  results.sort((a, b) => sortKey(mode, a) - sortKey(mode, b));
-
-  const warnings: string[] = [];
-  if (warning) warnings.push(warning);
-  const lowConfidence = results.some((r) => r.dataConfidence < 50);
-  if (lowConfidence) {
-    warnings.push(
-      "Some route sections have little accessibility data. Unknown sections do not mean inaccessible - they mean we need more information.",
-    );
-  }
-  const emptyEvidence = results.every((r) => r.evidence.length === 0);
-  if (emptyEvidence) {
-    warnings.push(
-      "No accessibility features were found near these routes. Treat results as preliminary.",
-    );
+    const emptyEvidence = results.every((r) => r.evidence.length === 0);
+    if (emptyEvidence) {
+      warnings.push(
+        "No accessibility features were found near these routes. Treat results as preliminary.",
+      );
+    }
+    scored = { results, warnings };
+    scoredCache.set(scoredKey, scored);
   }
 
-  const result: { routes: RouteResult[]; warnings: string[] } = { routes: results, warnings };
+  const routes = scored.results
+    .map((r) => ({ ...r, mode }))
+    .sort((a, b) => sortKey(mode, a) - sortKey(mode, b));
+  const result: { routes: RouteResult[]; warnings: string[] } = {
+    routes,
+    warnings: scored.warnings,
+  };
   resultCache.set(cacheKey, result);
   return result;
 }

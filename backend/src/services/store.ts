@@ -36,6 +36,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface DataStore {
   readonly kind: "memory" | "postgres";
   getAllAccessibilityPoints(): Promise<AccessibilityPoint[]>;
+  /** Drop any cached accessibility points (called when reports change). */
+  invalidateAccessibilityPoints(): Promise<void>;
   getReports(userId?: string): Promise<AccessibilityReport[]>;
   createReport(input: {
     type: ReportType;
@@ -209,15 +211,25 @@ export class MemoryStore implements DataStore {
   private usersByEmail: Map<string, User> = new Map();
   private usersById: Map<string, User> = new Map();
   private recentRoutes: Map<string, RecentRoute[]> = new Map();
+  private pointsCache: { points: AccessibilityPoint[]; at: number } | null = null;
+  private readonly pointsCacheTtlMs = 20_000;
 
   async getAllAccessibilityPoints(): Promise<AccessibilityPoint[]> {
+    if (this.pointsCache && Date.now() - this.pointsCache.at < this.pointsCacheTtlMs) {
+      return this.pointsCache.points;
+    }
     const points: AccessibilityPoint[] = [];
     for (const report of this.reports) {
       const status = effectiveReportStatus(report);
       if (status === "rejected" || status === "expired") continue;
       points.push(reportToAccessibilityPoint(report, status));
     }
+    this.pointsCache = { points, at: Date.now() };
     return points;
+  }
+
+  async invalidateAccessibilityPoints(): Promise<void> {
+    this.pointsCache = null;
   }
 
   async getReports(userId?: string): Promise<AccessibilityReport[]> {
@@ -269,6 +281,7 @@ export class MemoryStore implements DataStore {
       aiObservation: input.aiObservation,
     };
     this.reports.unshift(report);
+    await this.invalidateAccessibilityPoints();
     return report;
   }
 
@@ -299,6 +312,7 @@ export class MemoryStore implements DataStore {
     report.upvotes = upvotes;
     report.downvotes = downvotes;
     applyVoteStatus(report);
+    await this.invalidateAccessibilityPoints();
     return { ...report, myVote: userVotes.get(userId) ?? null };
   }
 

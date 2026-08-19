@@ -146,6 +146,8 @@ function rowToReport(row: ReportRow): AccessibilityReport {
 export class PostgresStore {
   readonly kind = "postgres" as const;
   private pool: pg.Pool;
+  private pointsCache: { points: AccessibilityPoint[]; at: number } | null = null;
+  private readonly pointsCacheTtlMs = 20_000;
 
   constructor(databaseUrl: string) {
     this.pool = new Pool({
@@ -160,6 +162,9 @@ export class PostgresStore {
   }
 
   async getAllAccessibilityPoints(): Promise<AccessibilityPoint[]> {
+    if (this.pointsCache && Date.now() - this.pointsCache.at < this.pointsCacheTtlMs) {
+      return this.pointsCache.points;
+    }
     const { rows } = await this.pool.query(
       `SELECT id, report_type, description, status, upvotes, downvotes, verified_at,
               photo_url, created_at, expires_at, NULL::text AS my_vote,
@@ -173,7 +178,12 @@ export class PostgresStore {
       if (status === "rejected" || status === "expired") continue;
       points.push(reportToAccessibilityPoint(report, status));
     }
+    this.pointsCache = { points, at: Date.now() };
     return points;
+  }
+
+  async invalidateAccessibilityPoints(): Promise<void> {
+    this.pointsCache = null;
   }
 
   async getReports(userId?: string): Promise<AccessibilityReport[]> {
@@ -230,6 +240,7 @@ export class PostgresStore {
     } finally {
       client.release();
     }
+    await this.invalidateAccessibilityPoints();
     return {
       id,
       type: input.type,
@@ -299,6 +310,7 @@ export class PostgresStore {
       );
       await client.query("COMMIT");
       report.status = effectiveReportStatus(report);
+      await this.invalidateAccessibilityPoints();
       return report;
     } catch (error) {
       await client.query("ROLLBACK");
