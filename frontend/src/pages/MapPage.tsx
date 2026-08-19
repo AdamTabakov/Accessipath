@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, MapPin, Siren } from "lucide-react";
-import type { AccessibilityReport, Coordinates, Place, RouteMode, RouteResult } from "../types/index.js";
+import type { AccessibilityReport, Coordinates, Place, RecentRoute, RouteMode, RouteResult } from "../types/index.js";
 import { MODES, ENG, SLC } from "../utils/constants.js";
+import { useAuth } from "../hooks/useAuth.js";
 import { useProfile } from "../hooks/useProfile.js";
 import { useRoutes } from "../hooks/useRoutes.js";
 import * as api from "../services/api.js";
 import { MapCanvas } from "../components/map/MapCanvas.js";
 import { RoutePlanner } from "../components/routing/RoutePlanner.js";
 import { RouteCard } from "../components/routing/RouteCard.js";
+import { RecentRoutes } from "../components/routing/RecentRoutes.js";
 import { ReportPanel } from "../components/report/ReportPanel.js";
 import { Button, Spinner } from "../components/ui.js";
 import { AnimatedTabs, ShimmerButton } from "../components/ui-kit/index.js";
@@ -18,7 +20,7 @@ const SLC_PLACE: Place = {
   description: "341 Yonge Street",
   latitude: SLC.latitude,
   longitude: SLC.longitude,
-  source: "tmu",
+  source: "curated",
 };
 
 const ENG_PLACE: Place = {
@@ -27,10 +29,11 @@ const ENG_PLACE: Place = {
   description: "245 Church Street",
   latitude: ENG.latitude,
   longitude: ENG.longitude,
-  source: "tmu",
+  source: "curated",
 };
 
 export function MapPage() {
+  const { user } = useAuth();
   const { profile } = useProfile();
   const [start, setStart] = useState<Place | null>(SLC_PLACE);
   const [end, setEnd] = useState<Place | null>(ENG_PLACE);
@@ -39,6 +42,9 @@ export function MapPage() {
   const [showUnknown, setShowUnknown] = useState(true);
   const [locating, setLocating] = useState(false);
   const [reports, setReports] = useState<AccessibilityReport[]>([]);
+  const [recentRoutes, setRecentRoutes] = useState<RecentRoute[]>([]);
+  const savedRouteKeyRef = useRef<string>("");
+  const [focusReport, setFocusReport] = useState<AccessibilityReport | null>(null);
 
   const [reportOpen, setReportOpen] = useState(false);
   const [pickingLocation, setPickingLocation] = useState(false);
@@ -63,6 +69,64 @@ export function MapPage() {
   useEffect(() => {
     api.getReports().then(({ reports }) => setReports(reports)).catch(() => {});
   }, []);
+
+  const isAuthed = user !== null;
+
+  useEffect(() => {
+    savedRouteKeyRef.current = "";
+    if (!isAuthed) {
+      setRecentRoutes([]);
+      return;
+    }
+    api
+      .getRecentRoutes()
+      .then(({ routes }) => setRecentRoutes(routes))
+      .catch(() => {});
+  }, [isAuthed, user?.id]);
+
+  useEffect(() => {
+    if (!isAuthed || !start || !end || !data?.routes?.length) return;
+    const key = `${start.latitude},${start.longitude}->${end.latitude},${end.longitude}@${mode}`;
+    if (savedRouteKeyRef.current === key) return;
+    savedRouteKeyRef.current = key;
+    api
+      .saveRecentRoute({
+        startLabel: start.label,
+        startLatitude: start.latitude,
+        startLongitude: start.longitude,
+        endLabel: end.label,
+        endLatitude: end.latitude,
+        endLongitude: end.longitude,
+        mode,
+      })
+      .then(({ route }) => {
+        setRecentRoutes((prev) => [route, ...prev.filter((r) => r.id !== route.id)].slice(0, 10));
+      })
+      .catch(() => {
+        savedRouteKeyRef.current = "";
+      });
+  }, [isAuthed, start, end, mode, data]);
+
+  const handleRecentRouteSelect = (route: RecentRoute) => {
+    setStart({
+      id: `recent-start-${route.id}`,
+      label: route.startLabel,
+      description: "Saved route",
+      latitude: route.startLatitude,
+      longitude: route.startLongitude,
+      source: "nominatim",
+    });
+    setEnd({
+      id: `recent-end-${route.id}`,
+      label: route.endLabel,
+      description: "Saved route",
+      latitude: route.endLatitude,
+      longitude: route.endLongitude,
+      source: "nominatim",
+    });
+    setMode(route.mode);
+    setSelectedRouteId(null);
+  };
 
   const selectedEvidence = selectedRoute?.evidence ?? [];
 
@@ -95,6 +159,7 @@ export function MapPage() {
     setReports((prev) => [report, ...prev]);
     setPickedLocation(null);
     setPickingLocation(false);
+    setFocusReport(report);
     refresh();
   }, [refresh]);
 
@@ -117,6 +182,15 @@ export function MapPage() {
               locating={locating}
             />
           </div>
+
+          {isAuthed && (
+            <div className="rounded-card bg-charcoal p-6">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ash">
+                Recent routes
+              </h2>
+              <RecentRoutes routes={recentRoutes} onSelect={handleRecentRouteSelect} />
+            </div>
+          )}
 
           <div className="rounded-card bg-charcoal p-6">
             <fieldset>
@@ -194,6 +268,13 @@ export function MapPage() {
               Search for a start and destination above to plan a route.
             </div>
           )}
+
+          {!loading && !error && start && end && routes.length === 0 && (
+            <div className="rounded-card border border-status-warning/40 bg-status-warning/10 p-6 text-sm text-platinum">
+              We couldn't find a walkable route between these points. Try a
+              nearby start or destination.
+            </div>
+          )}
         </aside>
 
         {/* Map */}
@@ -208,6 +289,7 @@ export function MapPage() {
             unknownCoordinates={selectedRoute?.unknownCoordinates ?? []}
             showUnknown={showUnknown}
             reports={reports}
+            focusReport={focusReport}
             pickingLocation={pickingLocation}
             pickedLocation={pickedLocation}
             onPickLocation={(c) => {

@@ -141,6 +141,18 @@ export function ReportPanel({
           and will appear on nearby routes immediately. Institutional information is never overwritten
           by reports — both are shown side by side.
         </p>
+        {pickedLocation && (
+          <p className="mt-2 text-xs text-ash">
+            Location: {pickedLocation.latitude.toFixed(5)}, {pickedLocation.longitude.toFixed(5)}
+          </p>
+        )}
+        {photoPreview && (
+          <img
+            src={photoPreview}
+            alt="Your submitted photo"
+            className="mt-3 max-h-48 w-full rounded-card-sm border border-graphite object-cover"
+          />
+        )}
         <Button className="mt-4" onClick={onClose}>
           Done
         </Button>

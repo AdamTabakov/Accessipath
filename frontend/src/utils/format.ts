@@ -25,6 +25,21 @@ export function formatDate(iso: string): string {
   }
 }
 
+export function formatRouteTime(iso: string): string {
+  try {
+    const then = new Date(iso).getTime();
+    const diffMs = Date.now() - then;
+    const minutes = Math.floor(diffMs / 60_000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hr${hours === 1 ? "" : "s"} ago`;
+    return formatDate(iso);
+  } catch {
+    return iso;
+  }
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

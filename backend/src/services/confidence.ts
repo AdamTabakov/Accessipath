@@ -75,7 +75,9 @@ export function computeConfidence(opts: {
   const recency = recencyScore(evidence);
   const verified = evidence.some((item) => item.sourceType === "institutional")
     ? 0.95
-    : 0.4;
+    : evidence.some((item) => item.sourceType === "community" && item.verified)
+      ? 0.8
+      : 0.4;
   const agreement = agreementScore(evidence);
 
   const breakdown: ConfidenceBreakdown = {

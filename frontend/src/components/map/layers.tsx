@@ -79,6 +79,16 @@ export function EvidenceMarkers({ items }: { items: EvidenceItem[] }) {
                 <em>{item.description}</em>
               </>
             )}
+            {item.photoUrl && (
+              <>
+                <br />
+                <img
+                  src={item.photoUrl}
+                  alt={`Photo evidence: ${item.label}`}
+                  className="mt-1 max-h-32 w-48 rounded object-cover"
+                />
+              </>
+            )}
           </Tooltip>
         </Marker>
       ))}

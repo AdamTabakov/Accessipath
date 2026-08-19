@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { MapContainer, TileLayer, useMap, Marker, Tooltip } from "react-leaflet";
 import { divIcon } from "leaflet";
 import type { AccessibilityReport, Coordinates, EvidenceItem, RouteResult } from "../../types/index.js";
@@ -58,6 +58,7 @@ export interface MapCanvasProps {
   unknownCoordinates: Coordinates[];
   showUnknown: boolean;
   reports: AccessibilityReport[];
+  focusReport?: AccessibilityReport | null;
   pickingLocation: boolean;
   pickedLocation: Coordinates | null;
   onPickLocation: (coords: Coordinates) => void;
@@ -73,6 +74,7 @@ export function MapCanvas({
   unknownCoordinates,
   showUnknown,
   reports,
+  focusReport,
   pickingLocation,
   pickedLocation,
   onPickLocation,
@@ -115,11 +117,28 @@ export function MapCanvas({
           >
             <Tooltip direction="top" offset={[0, -14]}>
               <strong>Community report</strong>
+              {r.status === "verified" && <span className="ml-1 text-status-accessible">· verified</span>}
               <br />
               {r.description}
+              <br />
+              <span className="text-xs">
+                {r.upvotes} up · {r.downvotes} down · {r.status}
+              </span>
+              {r.photoUrl && (
+                <>
+                  <br />
+                  <img
+                    src={r.photoUrl}
+                    alt={`Report photo: ${r.description}`}
+                    className="mt-1 max-h-32 w-48 rounded object-cover"
+                  />
+                </>
+              )}
             </Tooltip>
           </Marker>
         ))}
+
+        <FlyToReport report={focusReport} />
 
         {pickingLocation && (
           <MapClickCapture onPickLocation={onPickLocation} />
@@ -150,6 +169,18 @@ export function MapCanvas({
       )}
     </div>
   );
+}
+
+function FlyToReport({ report }: { report?: AccessibilityReport | null }) {
+  const map = useMap();
+  const lastId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!report) return;
+    if (lastId.current === report.id) return;
+    lastId.current = report.id;
+    map.flyTo([report.latitude, report.longitude], 16, { duration: 1.2 });
+  }, [map, report]);
+  return null;
 }
 
 function MapClickCapture({ onPickLocation }: { onPickLocation: (c: Coordinates) => void }) {

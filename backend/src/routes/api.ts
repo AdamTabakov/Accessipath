@@ -1,17 +1,18 @@
 import { Router } from "express";
 import type { DataStore } from "../services/store.js";
-import { buildRoutes, profileFromDefaults } from "../controllers/routingController.js";
+import { buildRoutes, invalidateRouteResults, profileFromDefaults } from "../controllers/routingController.js";
 import { geocode } from "../services/geocoding.js";
 import { savePhoto } from "../utils/uploads.js";
 import { HttpError } from "../middleware/error.js";
 import { apiLimiter, strictLimiter } from "../middleware/rateLimit.js";
-import { optionalAuth } from "../services/auth.js";
+import { optionalAuth, requireAuth } from "../services/auth.js";
 import {
   aiBodySchema,
-  nearbyQuerySchema,
   profileBodySchema,
+  recentRouteBodySchema,
   reportBodySchema,
   routesQuerySchema,
+  voteBodySchema,
 } from "../middleware/validate.js";
 
 export function createApiRouter(store: DataStore): Router {
@@ -27,15 +28,6 @@ export function createApiRouter(store: DataStore): Router {
       time: new Date().toISOString(),
       dataStore: store.kind,
     });
-  });
-
-  router.get("/api/places", async (req, res, next) => {
-    try {
-      const q = typeof req.query.q === "string" ? req.query.q : "";
-      res.json({ results: await store.searchPlaces(q) });
-    } catch (error) {
-      next(error);
-    }
   });
 
   router.get("/api/geocode", strictLimiter, async (req, res, next) => {
@@ -81,37 +73,30 @@ export function createApiRouter(store: DataStore): Router {
     }
   });
 
-  router.get("/api/accessibility/nearby", async (req, res, next) => {
+  router.get("/api/routes/recent", requireAuth, async (req, res, next) => {
     try {
-      const query = nearbyQuerySchema.parse(req.query);
-      const points = await store.getAccessibilityPointsNear(query.lat, query.lon, query.radius);
-      res.json({ points });
+      const userId = res.locals.userId as string;
+      res.json({ routes: await store.getRecentRoutes(userId) });
     } catch (error) {
       next(error);
     }
   });
 
-  router.get("/api/buildings", async (_req, res, next) => {
+  router.post("/api/routes/recent", requireAuth, async (req, res, next) => {
     try {
-      res.json({ buildings: await store.getBuildings() });
+      const body = recentRouteBodySchema.parse(req.body);
+      const userId = res.locals.userId as string;
+      const route = await store.addRecentRoute(userId, body);
+      res.status(201).json({ route });
     } catch (error) {
       next(error);
     }
   });
 
-  router.get("/api/buildings/:id", async (req, res, next) => {
+  router.get("/api/reports", optionalAuth, async (req, res, next) => {
     try {
-      const building = await store.getBuilding(req.params.id);
-      if (!building) throw new HttpError(404, "Building not found.");
-      res.json({ building });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  router.get("/api/reports", async (_req, res, next) => {
-    try {
-      res.json({ reports: await store.getReports() });
+      const userId = res.locals.userId as string | undefined;
+      res.json({ reports: await store.getReports(userId) });
     } catch (error) {
       next(error);
     }
@@ -145,12 +130,27 @@ export function createApiRouter(store: DataStore): Router {
             }
           : undefined,
       });
+      invalidateRouteResults();
       res.status(201).json({ report });
     } catch (error) {
       if (error instanceof Error && !(error as unknown as { status?: number }).status) {
         next(error);
         return;
       }
+      next(error);
+    }
+  });
+
+  router.post("/api/reports/:id/vote", requireAuth, async (req, res, next) => {
+    try {
+      const body = voteBodySchema.parse(req.body);
+      const reportId = req.params.id;
+      if (!reportId) throw new HttpError(404, "Report not found.");
+      const userId = res.locals.userId as string;
+      const report = await store.voteReport(reportId, userId, body.direction);
+      invalidateRouteResults();
+      res.json({ report });
+    } catch (error) {
       next(error);
     }
   });

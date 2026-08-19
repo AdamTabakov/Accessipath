@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import type express from "express";
 import { createApp } from "../src/app.js";
@@ -6,7 +6,53 @@ import { MemoryStore } from "../src/services/store.js";
 
 let app: express.Express;
 
+const osrmRoutes = {
+  code: "Ok",
+  routes: [
+    {
+      distance: 520,
+      duration: 420,
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [-79.3802, 43.6577],
+          [-79.3791, 43.65785],
+          [-79.377632, 43.658112],
+        ],
+      },
+    },
+    {
+      distance: 610,
+      duration: 490,
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [-79.3802, 43.6577],
+          [-79.3788, 43.658],
+          [-79.3781, 43.65805],
+          [-79.377632, 43.658112],
+        ],
+      },
+    },
+  ],
+};
+
 beforeAll(async () => {
+  vi.stubGlobal("fetch", async (input: unknown) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : typeof input === "object" && input !== null && "url" in input
+          ? String((input as { url: unknown }).url)
+          : "";
+    if (url.includes("/route/v1/foot/")) {
+      return new Response(JSON.stringify(osrmRoutes), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    throw new Error(`Unexpected network fetch in tests: ${url}`);
+  });
   app = await createApp(new MemoryStore());
 });
 
@@ -17,10 +63,11 @@ describe("API", () => {
     expect(res.body.status).toBe("ok");
   });
 
-  it("lists TMU places", async () => {
-    const res = await request(app).get("/api/places?q=eng");
-    expect(res.status).toBe(200);
-    expect(res.body.results.length).toBeGreaterThan(0);
+  it("rejects invalid route coordinates", async () => {
+    const res = await request(app).get(
+      "/api/routes?start=999,-79.38&end=43.658112,-79.377632",
+    );
+    expect(res.status).toBe(400);
   });
 
   it("returns at least two scored routes for SLC -> ENG", async () => {
@@ -59,22 +106,6 @@ describe("API", () => {
     const durations = res.body.routes.map((r: { durationMinutes: number }) => r.durationMinutes);
     const sorted = [...durations].sort((a, b) => a - b);
     expect(durations).toEqual(sorted);
-  });
-
-  it("rejects invalid route coordinates", async () => {
-    const res = await request(app).get(
-      "/api/routes?start=999,-79.38&end=43.658112,-79.377632",
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("returns accessibility points near coordinates", async () => {
-    const res = await request(app).get(
-      "/api/accessibility/nearby?lat=43.6577&lon=-79.3802&radius=200",
-    );
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.points)).toBe(true);
-    expect(res.body.points.length).toBeGreaterThan(0);
   });
 
   it("creates a community report", async () => {

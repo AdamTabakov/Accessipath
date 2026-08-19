@@ -3,57 +3,23 @@ import type {
   AccessibilityPoint,
   AccessibilityReport,
   AiObservation,
-  Building,
-  Place,
   ProfilePreferences,
+  RecentRoute,
+  RouteMode,
   User,
+  VoteDirection,
 } from "../types/index.js";
-import { TMU_BUILDINGS, TMU_ACCESSIBILITY_POINTS } from "../data/tmuAccessibility.js";
-import { DEMO_REPORTS } from "../data/demoReports.js";
-import { DEFAULT_PLACES } from "../data/places.js";
-import { DEFAULT_PROFILE, reportTypeToPoint } from "./store.js";
+import {
+  applyVoteStatus,
+  DEFAULT_PROFILE,
+  effectiveReportStatus,
+  reportToAccessibilityPoint,
+} from "./store.js";
 
 const { Pool } = pg;
 
 const SCHEMA = `
 CREATE EXTENSION IF NOT EXISTS postgis;
-
-CREATE TABLE IF NOT EXISTS buildings (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  short_name TEXT NOT NULL,
-  address TEXT NOT NULL,
-  geometry GEOGRAPHY(POINT, 4326) NOT NULL,
-  source_url TEXT,
-  source_type TEXT NOT NULL,
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS accessibility_points (
-  id TEXT PRIMARY KEY,
-  building_id TEXT REFERENCES buildings(id),
-  type TEXT NOT NULL,
-  geometry GEOGRAPHY(POINT, 4326) NOT NULL,
-  ramp BOOLEAN,
-  elevator BOOLEAN,
-  stairs BOOLEAN,
-  automatic_door BOOLEAN,
-  wheelchair TEXT,
-  surface TEXT,
-  incline TEXT,
-  source_type TEXT NOT NULL,
-  source_url TEXT,
-  confidence NUMERIC(5,2) NOT NULL DEFAULT 0.5,
-  verified_at TIMESTAMPTZ,
-  is_temporary BOOLEAN DEFAULT FALSE,
-  severity TEXT,
-  expires_at TIMESTAMPTZ,
-  description TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS accessibility_points_geo_idx
-  ON accessibility_points USING GIST (geometry);
 
 CREATE TABLE IF NOT EXISTS route_reports (
   id TEXT PRIMARY KEY,
@@ -61,12 +27,27 @@ CREATE TABLE IF NOT EXISTS route_reports (
   description TEXT NOT NULL,
   geometry GEOGRAPHY(POINT, 4326) NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
+  upvotes INT NOT NULL DEFAULT 0,
+  downvotes INT NOT NULL DEFAULT 0,
+  verified_at TIMESTAMPTZ,
   photo_url TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   expires_at TIMESTAMPTZ
 );
+ALTER TABLE route_reports ADD COLUMN IF NOT EXISTS upvotes INT NOT NULL DEFAULT 0;
+ALTER TABLE route_reports ADD COLUMN IF NOT EXISTS downvotes INT NOT NULL DEFAULT 0;
+ALTER TABLE route_reports ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS route_reports_geo_idx
   ON route_reports USING GIST (geometry);
+
+CREATE TABLE IF NOT EXISTS report_votes (
+  report_id TEXT NOT NULL REFERENCES route_reports(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  direction TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (report_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS report_votes_report_idx ON report_votes (report_id);
 
 CREATE TABLE IF NOT EXISTS ai_observations (
   id BIGSERIAL PRIMARY KEY,
@@ -107,57 +88,57 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS users_email_idx ON users (email);
+
+CREATE TABLE IF NOT EXISTS recent_routes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  start_label TEXT NOT NULL,
+  start_lat NUMERIC NOT NULL,
+  start_lon NUMERIC NOT NULL,
+  end_label TEXT NOT NULL,
+  end_lat NUMERIC NOT NULL,
+  end_lon NUMERIC NOT NULL,
+  mode TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS recent_routes_user_idx ON recent_routes (user_id, created_at DESC);
 `;
 
 function pointGeog(lon: number, lat: number): string {
   return `SRID=4326;POINT(${lon} ${lat})`;
 }
 
-interface PointRow {
+interface ReportRow {
   id: string;
-  building_name: string | null;
-  type: string;
+  report_type: string;
+  description: string;
   lat: number;
   lon: number;
-  ramp: boolean | null;
-  elevator: boolean | null;
-  stairs: boolean | null;
-  automatic_door: boolean | null;
-  wheelchair: string | null;
-  surface: string | null;
-  incline: string | null;
-  source_type: string;
-  source_url: string | null;
-  confidence: string | number;
+  status: string;
+  upvotes: string | number;
+  downvotes: string | number;
   verified_at: string | null;
-  is_temporary: boolean | null;
-  severity: string | null;
+  photo_url: string | null;
+  created_at: string;
   expires_at: string | null;
-  description: string | null;
+  my_vote: string | null;
 }
 
-function rowToPoint(row: PointRow): AccessibilityPoint {
+function rowToReport(row: ReportRow): AccessibilityReport {
   return {
     id: row.id,
-    buildingName: row.building_name ?? undefined,
-    type: row.type as AccessibilityPoint["type"],
+    type: row.report_type as AccessibilityReport["type"],
+    description: row.description,
     latitude: Number(row.lat),
     longitude: Number(row.lon),
-    ramp: row.ramp ?? undefined,
-    elevator: row.elevator ?? undefined,
-    stairs: row.stairs ?? undefined,
-    automaticDoor: row.automatic_door ?? undefined,
-    wheelchair: (row.wheelchair as AccessibilityPoint["wheelchair"]) ?? undefined,
-    surface: (row.surface as AccessibilityPoint["surface"]) ?? undefined,
-    incline: (row.incline as AccessibilityPoint["incline"]) ?? undefined,
-    sourceType: row.source_type as AccessibilityPoint["sourceType"],
-    sourceUrl: row.source_url ?? undefined,
-    confidence: Number(row.confidence),
-    verifiedAt: row.verified_at ?? undefined,
-    isTemporary: row.is_temporary ?? undefined,
-    severity: (row.severity as AccessibilityPoint["severity"]) ?? undefined,
-    expiresAt: row.expires_at ?? undefined,
-    description: row.description ?? undefined,
+    status: row.status as AccessibilityReport["status"],
+    upvotes: Number(row.upvotes ?? 0),
+    downvotes: Number(row.downvotes ?? 0),
+    myVote: (row.my_vote as VoteDirection | null) ?? null,
+    verifiedAt: row.verified_at ? new Date(row.verified_at).toISOString() : undefined,
+    photoUrl: row.photo_url ?? undefined,
+    createdAt: new Date(row.created_at).toISOString(),
+    expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : new Date().toISOString(),
   };
 }
 
@@ -176,164 +157,43 @@ export class PostgresStore {
 
   async initialize(): Promise<void> {
     await this.pool.query(SCHEMA);
-    const { rows } = await this.pool.query<{ c: string }>("SELECT count(*)::text AS c FROM buildings");
-    if (Number(rows[0]?.c ?? 0) === 0) {
-      await this.seed();
-    }
-  }
-
-  private async seed(): Promise<void> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
-      for (const b of TMU_BUILDINGS) {
-        await client.query(
-          `INSERT INTO buildings (id, name, short_name, address, geometry, source_url, source_type, notes)
-           VALUES ($1,$2,$3,$4,ST_GeogFromText($5),$6,$7,$8)
-           ON CONFLICT (id) DO NOTHING`,
-          [b.id, b.name, b.shortName, b.address, pointGeog(b.longitude, b.latitude), b.sourceUrl, b.sourceType, b.notes],
-        );
-      }
-      for (const p of TMU_ACCESSIBILITY_POINTS) {
-        const building = TMU_BUILDINGS.find((b) => b.name === p.buildingName);
-        await client.query(
-          `INSERT INTO accessibility_points
-             (id, building_id, type, geometry, ramp, elevator, stairs, automatic_door,
-              wheelchair, surface, incline, source_type, source_url, confidence, verified_at,
-              is_temporary, severity, expires_at, description)
-           VALUES ($1,$2,$3,ST_GeogFromText($4),$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-           ON CONFLICT (id) DO NOTHING`,
-          [
-            p.id,
-            building?.id ?? null,
-            p.type,
-            pointGeog(p.longitude, p.latitude),
-            p.ramp ?? null,
-            p.elevator ?? null,
-            p.stairs ?? null,
-            p.automaticDoor ?? null,
-            p.wheelchair ?? null,
-            p.surface ?? null,
-            p.incline ?? null,
-            p.sourceType,
-            p.sourceUrl ?? null,
-            p.confidence,
-            p.verifiedAt ?? null,
-            p.isTemporary ?? null,
-            p.severity ?? null,
-            p.expiresAt ?? null,
-            p.description ?? null,
-          ],
-        );
-      }
-      for (const r of DEMO_REPORTS) {
-        await client.query(
-          `INSERT INTO route_reports (id, report_type, description, geometry, status, photo_url, created_at, expires_at)
-           VALUES ($1,$2,$3,ST_GeogFromText($4),$5,$6,$7,$8)
-           ON CONFLICT (id) DO NOTHING`,
-          [r.id, r.type, r.description, pointGeog(r.longitude, r.latitude), r.status, r.photoUrl ?? null, r.createdAt, r.expiresAt],
-        );
-      }
-      await client.query(
-        `INSERT INTO user_preferences (id, profile_json) VALUES ('default', $1) ON CONFLICT (id) DO NOTHING`,
-        [JSON.stringify(DEFAULT_PROFILE)],
-      );
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  async searchPlaces(query: string): Promise<Place[]> {
-    const q = query.trim().toLowerCase();
-    const list = q ? DEFAULT_PLACES.filter((p) => (p.label + " " + p.description).toLowerCase().includes(q)) : DEFAULT_PLACES;
-    return list.slice(0, 8);
-  }
-
-  async getBuildings(): Promise<Building[]> {
-    const { rows } = await this.pool.query(
-      `SELECT id, name, short_name, address, source_url, source_type, notes,
-              ST_Y(geometry::geometry) AS lat, ST_X(geometry::geometry) AS lon
-       FROM buildings ORDER BY name`,
-    );
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      shortName: r.short_name,
-      address: r.address,
-      latitude: Number(r.lat),
-      longitude: Number(r.lon),
-      sourceUrl: r.source_url ?? "",
-      sourceType: r.source_type,
-      notes: r.notes ?? undefined,
-    }));
-  }
-
-  async getBuilding(id: string): Promise<Building | null> {
-    const { rows } = await this.pool.query(
-      `SELECT id, name, short_name, address, source_url, source_type, notes,
-              ST_Y(geometry::geometry) AS lat, ST_X(geometry::geometry) AS lon
-       FROM buildings WHERE id = $1`,
-      [id],
-    );
-    const r = rows[0];
-    if (!r) return null;
-    return {
-      id: r.id,
-      name: r.name,
-      shortName: r.short_name,
-      address: r.address,
-      latitude: Number(r.lat),
-      longitude: Number(r.lon),
-      sourceUrl: r.source_url ?? "",
-      sourceType: r.source_type,
-      notes: r.notes ?? undefined,
-    };
   }
 
   async getAllAccessibilityPoints(): Promise<AccessibilityPoint[]> {
     const { rows } = await this.pool.query(
-      `SELECT p.*, b.name AS building_name, ST_Y(p.geometry::geometry) AS lat, ST_X(p.geometry::geometry) AS lon
-       FROM accessibility_points p LEFT JOIN buildings b ON b.id = p.building_id`,
-    );
-    return rows.map(rowToPoint);
-  }
-
-  async getAccessibilityPointsNear(
-    lat: number,
-    lon: number,
-    radiusM: number,
-  ): Promise<AccessibilityPoint[]> {
-    const { rows } = await this.pool.query(
-      `SELECT p.*, b.name AS building_name, ST_Y(p.geometry::geometry) AS lat, ST_X(p.geometry::geometry) AS lon
-       FROM accessibility_points p LEFT JOIN buildings b ON b.id = p.building_id
-       WHERE ST_DWithin(p.geometry, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
-       ORDER BY p.geometry <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography`,
-      [lon, lat, radiusM],
-    );
-    return rows.map(rowToPoint);
-  }
-
-  async getReports(): Promise<AccessibilityReport[]> {
-    const { rows } = await this.pool.query(
-      `SELECT id, report_type, description, status, photo_url, created_at, expires_at,
+      `SELECT id, report_type, description, status, upvotes, downvotes, verified_at,
+              photo_url, created_at, expires_at, NULL::text AS my_vote,
               ST_Y(geometry::geometry) AS lat, ST_X(geometry::geometry) AS lon
-       FROM route_reports ORDER BY created_at DESC`,
+       FROM route_reports`,
     );
-    return rows.map((r) => ({
-      id: r.id,
-      type: r.report_type,
-      description: r.description,
-      latitude: Number(r.lat),
-      longitude: Number(r.lon),
-      status: r.status,
-      photoUrl: r.photo_url ?? undefined,
-      createdAt: new Date(r.created_at).toISOString(),
-      expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : "",
-    }));
+    const points: AccessibilityPoint[] = [];
+    for (const row of rows as ReportRow[]) {
+      const report = rowToReport(row);
+      const status = effectiveReportStatus(report);
+      if (status === "rejected" || status === "expired") continue;
+      points.push(reportToAccessibilityPoint(report, status));
+    }
+    return points;
+  }
+
+  async getReports(userId?: string): Promise<AccessibilityReport[]> {
+    const { rows } = await this.pool.query(
+      `SELECT r.id, r.report_type, r.description, r.status, r.upvotes, r.downvotes,
+              r.verified_at, r.photo_url, r.created_at, r.expires_at,
+              v.direction AS my_vote,
+              ST_Y(r.geometry::geometry) AS lat, ST_X(r.geometry::geometry) AS lon
+       FROM route_reports r
+       LEFT JOIN LATERAL (
+         SELECT direction FROM report_votes WHERE report_id = r.id AND user_id = $1
+       ) v ON true
+       ORDER BY r.created_at DESC`,
+      [userId ?? null],
+    );
+    return (rows as ReportRow[]).map((row) => {
+      const report = rowToReport(row);
+      report.status = effectiveReportStatus(report);
+      return report;
+    });
   }
 
   async createReport(input: {
@@ -346,41 +206,15 @@ export class PostgresStore {
   }): Promise<AccessibilityReport> {
     const id = `rep-${crypto.randomUUID()}`;
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
       await client.query(
-        `INSERT INTO route_reports (id, report_type, description, geometry, status, photo_url, created_at, expires_at)
+        `INSERT INTO route_reports
+           (id, report_type, description, geometry, status, photo_url, created_at, expires_at)
          VALUES ($1,$2,$3,ST_GeogFromText($4),'pending',$5,$6,$7)`,
         [id, input.type, input.description, pointGeog(input.longitude, input.latitude), input.photoUrl ?? null, now.toISOString(), expiresAt.toISOString()],
-      );
-      const point = reportTypeToPoint({
-        id: `point-${id}`,
-        type: input.type,
-        latitude: input.latitude,
-        longitude: input.longitude,
-        description: input.description,
-      });
-      await client.query(
-        `INSERT INTO accessibility_points
-           (id, type, geometry, ramp, elevator, stairs, wheelchair, surface, source_type,
-            confidence, is_temporary, severity, expires_at, description)
-         VALUES ($1,$2,ST_GeogFromText($3),$4,$5,$6,$7,$8,'community',0.5,$9,$10,$11,$12)`,
-        [
-          point.id,
-          point.type,
-          pointGeog(input.longitude, input.latitude),
-          point.ramp ?? null,
-          point.elevator ?? null,
-          point.stairs ?? null,
-          point.wheelchair ?? null,
-          point.surface ?? null,
-          point.isTemporary ?? null,
-          point.severity ?? null,
-          point.expiresAt ?? null,
-          point.description ?? null,
-        ],
       );
       if (input.aiObservation) {
         await client.query(
@@ -403,11 +237,75 @@ export class PostgresStore {
       latitude: input.latitude,
       longitude: input.longitude,
       status: "pending",
+      upvotes: 0,
+      downvotes: 0,
+      myVote: null,
       photoUrl: input.photoUrl,
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
       aiObservation: input.aiObservation,
     };
+  }
+
+  async voteReport(
+    id: string,
+    userId: string,
+    direction: VoteDirection,
+  ): Promise<AccessibilityReport> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const existing = await client.query<{ direction: string }>(
+        `SELECT direction FROM report_votes WHERE report_id = $1 AND user_id = $2`,
+        [id, userId],
+      );
+      if (existing.rows[0]?.direction === direction) {
+        await client.query(
+          `DELETE FROM report_votes WHERE report_id = $1 AND user_id = $2`,
+          [id, userId],
+        );
+      } else {
+        await client.query(
+          `INSERT INTO report_votes (report_id, user_id, direction)
+           VALUES ($1,$2,$3)
+           ON CONFLICT (report_id, user_id)
+           DO UPDATE SET direction = EXCLUDED.direction, created_at = now()`,
+          [id, userId, direction],
+        );
+      }
+      await client.query(
+        `UPDATE route_reports
+         SET upvotes = (SELECT count(*) FROM report_votes WHERE report_id = $1 AND direction = 'up'),
+             downvotes = (SELECT count(*) FROM report_votes WHERE report_id = $1 AND direction = 'down')
+         WHERE id = $1`,
+        [id],
+      );
+      const report = rowToReport(
+        (
+          await client.query(
+            `SELECT id, report_type, description, status, upvotes, downvotes, verified_at,
+                    photo_url, created_at, expires_at, $2::text AS my_vote,
+                    ST_Y(geometry::geometry) AS lat, ST_X(geometry::geometry) AS lon
+             FROM route_reports WHERE id = $1`,
+            [id, direction],
+          )
+        ).rows[0] as ReportRow,
+      );
+      if (!report) throw new Error("Report not found.");
+      applyVoteStatus(report);
+      await client.query(
+        `UPDATE route_reports SET status = $2, verified_at = $3, expires_at = $4 WHERE id = $1`,
+        [id, report.status, report.verifiedAt ?? null, report.expiresAt],
+      );
+      await client.query("COMMIT");
+      report.status = effectiveReportStatus(report);
+      return report;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async createAiObservation(observation: AiObservation): Promise<AiObservation> {
@@ -527,6 +425,82 @@ export class PostgresStore {
     const user = await this.getUserById(id);
     if (!user) throw new Error("User not found.");
     return user;
+  }
+
+  async getRecentRoutes(userId: string): Promise<RecentRoute[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id, start_label, start_lat, start_lon, end_label, end_lat, end_lon, mode, created_at
+       FROM recent_routes WHERE user_id = $1
+       ORDER BY created_at DESC LIMIT 10`,
+      [userId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      startLabel: r.start_label,
+      startLatitude: Number(r.start_lat),
+      startLongitude: Number(r.start_lon),
+      endLabel: r.end_label,
+      endLatitude: Number(r.end_lat),
+      endLongitude: Number(r.end_lon),
+      mode: r.mode as RouteMode,
+      createdAt: new Date(r.created_at).toISOString(),
+    }));
+  }
+
+  async addRecentRoute(
+    userId: string,
+    input: {
+      startLabel: string;
+      startLatitude: number;
+      startLongitude: number;
+      endLabel: string;
+      endLatitude: number;
+      endLongitude: number;
+      mode: RouteMode;
+    },
+  ): Promise<RecentRoute> {
+    // Remove older duplicates of the same start/end pair.
+    await this.pool.query(
+      `DELETE FROM recent_routes
+       WHERE user_id = $1
+         AND start_lat = $2 AND start_lon = $3
+         AND end_lat = $4 AND end_lon = $5`,
+      [
+        userId,
+        input.startLatitude,
+        input.startLongitude,
+        input.endLatitude,
+        input.endLongitude,
+      ],
+    );
+    await this.pool.query(
+      `INSERT INTO recent_routes
+         (id, user_id, start_label, start_lat, start_lon, end_label, end_lat, end_lon, mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        crypto.randomUUID(),
+        userId,
+        input.startLabel,
+        input.startLatitude,
+        input.startLongitude,
+        input.endLabel,
+        input.endLatitude,
+        input.endLongitude,
+        input.mode,
+      ],
+    );
+    // Trim to the 10 most recent.
+    await this.pool.query(
+      `DELETE FROM recent_routes
+       WHERE user_id = $1 AND id NOT IN (
+         SELECT id FROM recent_routes WHERE user_id = $1
+         ORDER BY created_at DESC LIMIT 10
+       )`,
+      [userId],
+    );
+    const [saved] = await this.getRecentRoutes(userId);
+    if (!saved) throw new Error("Failed to save recent route.");
+    return saved;
   }
 
   private rowToUser(row: {

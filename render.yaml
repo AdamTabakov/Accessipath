@@ -32,6 +32,18 @@ services:
         value: https://nominatim.openstreetmap.org
       - key: OVERPASS_URL
         value: https://overpass-api.de/api/interpreter
+      - key: APP_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: VERIFICATION_CODE_TTL_MINUTES
+        value: "15"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        value: AccessiPath <onboarding@resend.dev>
 
   # ---------- Frontend static site ----------
   - type: web

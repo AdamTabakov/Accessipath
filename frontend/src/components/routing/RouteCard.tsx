@@ -35,7 +35,7 @@ export function RouteCard({ route, rank, selected, recommended, onSelect }: Rout
                 {rank === 1 ? "Recommended route" : "Alternative route"}
               </p>
               <p className="text-xs text-ash">
-                {route.provider === "osrm" ? "Live routing" : "Cached demo route"} ·{" "}
+                {route.provider === "osrm" ? "Live routing" : "OpenStreetMap walkways"} ·{" "}
                 {formatDistance(route.distanceMeters)} · {formatDuration(route.durationMinutes)}
               </p>
             </div>

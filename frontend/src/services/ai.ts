@@ -203,13 +203,14 @@ export async function analyzeRouteRequest(
     env.useBrowserCache = true;
 
     onProgress?.(5, "Loading AI text model...");
-    const classifier = (await pipeline("zero-shot-classification", TEXT_MODEL_ID, {
+    const loadedClassifier: unknown = await pipeline("zero-shot-classification", TEXT_MODEL_ID, {
       progress_callback: (p: ProgressCallback) => {
         if (typeof p.progress === "number") {
           onProgress?.(Math.round(5 + p.progress * 0.85), "Downloading AI model...");
         }
       },
-    })) as TextClassifier;
+    });
+    const classifier = loadedClassifier as TextClassifier;
 
     onProgress?.(90, "Understanding your request (on-device)...");
     const out = await classifier(text, [...TEXT_LABELS], {

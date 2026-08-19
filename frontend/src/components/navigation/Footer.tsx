@@ -8,7 +8,7 @@ export function Footer() {
           <div className="max-w-md">
             <p className="font-display text-lg font-semibold text-silk">AccessiPath</p>
             <p className="mt-2 text-sm leading-relaxed text-ash">
-              Accessibility-first navigation across Toronto. Routes that are
+              Accessibility-first navigation across the world. Routes that are
               not just short — but usable.
             </p>
           </div>
@@ -39,7 +39,7 @@ export function Footer() {
 
         <div className="mt-10 border-t border-graphite pt-6 text-xs leading-relaxed text-ash">
           <p>
-            Map data &copy; OpenStreetMap contributors. TMU accessibility information is a curated
+            Map data &copy; OpenStreetMap contributors. Accessibility information is a curated
             demo dataset derived from public sources — review against live sources before relying on
             it.
           </p>

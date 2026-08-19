@@ -1,8 +1,25 @@
 import type { Coordinates, RouteCandidate } from "../types/index.js";
 import { config } from "../config.js";
-import { polylineLengthM } from "../utils/spatial.js";
+import { haversineDistance, polylineLengthM } from "../utils/spatial.js";
+import { createTtlCache } from "../utils/ttlCache.js";
 
 const WALK_SPEED_MPS = 1.25;
+
+/** Upper bound on corridor ways used to build the walkable network graph. */
+const MAX_CORRIDOR_WAYS = 8000;
+
+/** Cap on how many path edges we try to avoid when searching for a detour. */
+const MAX_DETOUR_ATTEMPTS = 24;
+
+/** Cache raw OSRM candidates per rounded start/end so mode/profile changes are instant. */
+const osrmCache = createTtlCache<string, RouteCandidate[]>(10 * 60_000);
+
+function osrmCacheKey(start: Coordinates, end: Coordinates): string {
+  return (
+    `${start.latitude.toFixed(4)},${start.longitude.toFixed(4)};` +
+    `${end.latitude.toFixed(4)},${end.longitude.toFixed(4)}`
+  );
+}
 
 /** Decode a GeoJSON LineString into our Coordinates shape. */
 function decodeGeoJsonGeometry(coords: unknown): Coordinates[] {
@@ -40,6 +57,10 @@ async function fetchOsrmRoutes(
   start: Coordinates,
   end: Coordinates,
 ): Promise<RouteCandidate[]> {
+  const key = osrmCacheKey(start, end);
+  const cached = osrmCache.get(key);
+  if (cached) return cached;
+
   const url =
     `${config.osrmUrl}/route/v1/foot/` +
     `${start.longitude},${start.latitude};${end.longitude},${end.latitude}` +
@@ -64,121 +85,328 @@ async function fetchOsrmRoutes(
     .map((r, i) => {
       const geometry = decodeGeoJsonGeometry(r.geometry?.coordinates);
       if (geometry.length < 2) return null;
+      const distance = r.distance ?? polylineLengthM(geometry);
       return toCandidate(
         `route_${i + 1}`,
         "osrm",
         geometry,
-        r.distance ?? polylineLengthM(geometry),
-        r.duration ?? (polylineLengthM(geometry) / WALK_SPEED_MPS),
+        distance,
+        distance / WALK_SPEED_MPS,
       );
     })
     .filter((r): r is RouteCandidate => r !== null);
+  osrmCache.set(key, routes);
   return routes;
 }
 
-/** Generic fallback path for arbitrary start/end pairs. */
-function genericDemoRoutes(
+/**
+ * Build sidewalk-following routes by walking the OSM way network between two
+ * points (a small graph over walkable way endpoints, Dijkstra by length).
+ * Returns up to two candidates, or [] when the network can't be walked.
+ */
+function sidewalkRoutesFromWays(
   start: Coordinates,
   end: Coordinates,
+  ways: Coordinates[][],
 ): RouteCandidate[] {
-  const mid1 = {
-    latitude: start.latitude + (end.latitude - start.latitude) * 0.5,
-    longitude: start.longitude + (end.longitude - start.longitude) * 0.4,
+  if (!ways || ways.length === 0) return [];
+
+  const nodeKey = (c: Coordinates) => `${c.latitude.toFixed(5)},${c.longitude.toFixed(5)}`;
+  const nodeById = new Map<string, number>();
+  const nodeCoord: Coordinates[] = [];
+  const getNode = (c: Coordinates): number => {
+    const k = nodeKey(c);
+    let id = nodeById.get(k);
+    if (id === undefined) {
+      id = nodeCoord.length;
+      nodeById.set(k, id);
+      nodeCoord.push(c);
+    }
+    return id;
   };
-  const mid2 = {
-    latitude: start.latitude + (end.latitude - start.latitude) * 0.6,
-    longitude: start.longitude + (end.longitude - start.longitude) * 0.7,
+
+  interface WayEdge {
+    a: number;
+    b: number;
+    geom: Coordinates[];
+  }
+  const edges: WayEdge[] = [];
+  const adj = new Map<number, number[]>();
+  const addEdge = (a: number, b: number, geom: Coordinates[]) => {
+    const ei = edges.length;
+    edges.push({ a, b, geom });
+    if (!adj.has(a)) adj.set(a, []);
+    if (!adj.has(b)) adj.set(b, []);
+    adj.get(a)!.push(ei);
+    adj.get(b)!.push(ei);
   };
-  const short: Coordinates[] = [start, mid1, end];
-  const detour: Coordinates[] = [start, mid1, mid2, end];
-  const to = (id: string, g: Coordinates[]): RouteCandidate => {
-    const distance = polylineLengthM(g);
-    return toCandidate(id, "demo", g, distance, (distance / WALK_SPEED_MPS) * 1.15);
+
+  interface Snap {
+    wayIndex: number;
+    point: Coordinates;
+    segIndex: number;
+    t: number;
+    dist: number;
+  }
+
+  // Nearest point ON any way polyline (not just its endpoints), so start/end
+  // points that sit mid-way along a street still snap onto the network.
+  function nearestOnWays(p: Coordinates): Snap | null {
+    let best: Snap | null = null;
+    for (let wi = 0; wi < ways.length; wi++) {
+      const poly = ways[wi]!;
+      for (let i = 0; i < poly.length - 1; i++) {
+        const a = poly[i]!;
+        const b = poly[i + 1]!;
+        const dLon = b.longitude - a.longitude;
+        const dLat = b.latitude - a.latitude;
+        const lenSq = dLon * dLon + dLat * dLat;
+        let t = lenSq === 0 ? 0 : ((p.longitude - a.longitude) * dLon + (p.latitude - a.latitude) * dLat) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+        const point = { longitude: a.longitude + t * dLon, latitude: a.latitude + t * dLat };
+        const dist = haversineDistance(p, point);
+        if (!best || dist < best.dist) best = { wayIndex: wi, point, segIndex: i, t, dist };
+      }
+    }
+    return best;
+  }
+
+  const startSnap = nearestOnWays(start);
+  const endSnap = nearestOnWays(end);
+  if (!startSnap || !endSnap || startSnap.dist > 500 || endSnap.dist > 500) return [];
+
+  const splitGeometry = (
+    geom: Coordinates[],
+    segIndex: number,
+    point: Coordinates,
+  ): [Coordinates[], Coordinates[]] => {
+    const left = [...geom.slice(0, segIndex + 1), point];
+    const right = [point, ...geom.slice(segIndex + 1)];
+    return [left, right];
   };
-  return [to("route_1", short), to("route_2", detour)];
+
+  // Split the ways that contain the start/end snap points so the network
+  // connects at exactly where the user starts and ends.
+  for (let wi = 0; wi < ways.length; wi++) {
+    const w = ways[wi]!;
+    if (w.length < 2) continue;
+    const inStart = startSnap.wayIndex === wi && startSnap.t > 0.005 && startSnap.t < 0.995;
+    const inEnd = endSnap.wayIndex === wi && endSnap.t > 0.005 && endSnap.t < 0.995;
+
+    if (inStart && inEnd) {
+      const sSeg = startSnap.segIndex;
+      const eSeg = endSnap.segIndex;
+      const between =
+        sSeg <= eSeg ? w.slice(sSeg + 1, eSeg + 1) : w.slice(eSeg + 1, sSeg + 1).reverse();
+      const geom = [startSnap.point, ...between, endSnap.point];
+      addEdge(getNode(startSnap.point), getNode(endSnap.point), geom);
+      continue;
+    }
+    if (inStart) {
+      const [left, right] = splitGeometry(w, startSnap.segIndex, startSnap.point);
+      addEdge(getNode(left[0]!), getNode(startSnap.point), left);
+      addEdge(getNode(startSnap.point), getNode(right[right.length - 1]!), right);
+      continue;
+    }
+    if (inEnd) {
+      const [left, right] = splitGeometry(w, endSnap.segIndex, endSnap.point);
+      addEdge(getNode(left[0]!), getNode(endSnap.point), left);
+      addEdge(getNode(endSnap.point), getNode(right[right.length - 1]!), right);
+      continue;
+    }
+    addEdge(getNode(w[0]!), getNode(w[w.length - 1]!), w);
+  }
+
+  if (nodeCoord.length < 2 || edges.length === 0) return [];
+
+  const edgeLen = (e: WayEdge) => polylineLengthM(e.geom);
+
+  const startNode = getNode(startSnap.point);
+  const endNode = getNode(endSnap.point);
+  if (startNode === endNode) return [];
+
+  function dijkstra(
+    s: number,
+    t: number,
+    bannedEdge = -1,
+  ): { prevEdge: number[]; reached: boolean } | null {
+    const dist = new Array<number>(nodeCoord.length).fill(Number.POSITIVE_INFINITY);
+    const prevEdge = new Array<number>(nodeCoord.length).fill(-1);
+    const visited = new Array<boolean>(nodeCoord.length).fill(false);
+    dist[s] = 0;
+    for (let iter = 0; iter < nodeCoord.length; iter++) {
+      let u = -1;
+      let best = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < nodeCoord.length; i++) {
+        if (!visited[i] && dist[i]! < best) {
+          best = dist[i]!;
+          u = i;
+        }
+      }
+      if (u === -1 || u === t) break;
+      visited[u] = true;
+      for (const ei of adj.get(u) ?? []) {
+        if (ei === bannedEdge) continue;
+        const e = edges[ei]!;
+        const v = e.a === u ? e.b : e.a;
+        if (visited[v]) continue;
+        const nd = dist[u]! + edgeLen(e);
+        if (nd < dist[v]!) {
+          dist[v] = nd;
+          prevEdge[v] = ei;
+        }
+      }
+    }
+    if (dist[t] === Number.POSITIVE_INFINITY) return null;
+    return { prevEdge, reached: true };
+  }
+
+  function reconstruct(prevEdge: number[]): Coordinates[] | null {
+    const chain: number[] = [];
+    let cur = endNode;
+    const guard = new Set<number>();
+    while (cur !== startNode) {
+      if (guard.has(cur)) return null;
+      guard.add(cur);
+      const ei = prevEdge[cur]!;
+      if (ei === -1) return null;
+      chain.push(ei);
+      const e = edges[ei]!;
+      cur = e.a === cur ? e.b : e.a;
+    }
+    chain.reverse();
+    const result: Coordinates[] = [];
+    let prevPoint: Coordinates | null = null;
+    for (const ei of chain) {
+      const e = edges[ei]!;
+      const geom = [...e.geom];
+      if (prevPoint) {
+        const d1 = haversineDistance(prevPoint, geom[0]!);
+        const d2 = haversineDistance(prevPoint, geom[geom.length - 1]!);
+        if (d1 > d2) geom.reverse();
+      }
+      const startIdx = prevPoint ? 1 : 0;
+      for (let i = startIdx; i < geom.length; i++) result.push(geom[i]!);
+      prevPoint = geom[geom.length - 1]!;
+    }
+    return result;
+  }
+
+  const primary = dijkstra(startNode, endNode);
+  if (!primary) return [];
+  const geom1 = reconstruct(primary.prevEdge);
+  if (!geom1) return [];
+
+  // Collect the edges along the primary path to find a good edge to avoid.
+  const pathEdges: number[] = [];
+  {
+    let cur = endNode;
+    const guard = new Set<number>();
+    while (cur !== startNode) {
+      if (guard.has(cur)) break;
+      guard.add(cur);
+      const ei = primary.prevEdge[cur]!;
+      if (ei === -1) break;
+      pathEdges.push(ei);
+      const e = edges[ei]!;
+      cur = e.a === cur ? e.b : e.a;
+    }
+  }
+  // Try avoiding edges on the primary path until we get a genuinely different
+  // detour; the corridor network may be a single route (e.g. through a tunnel),
+  // in which case there is no second path. Bound attempts to keep worst-case
+  // latency sane on large networks.
+  let geom2: Coordinates[] | null = null;
+  const primaryLen = polylineLengthM(geom1);
+  let attempts = 0;
+  for (const ei of pathEdges) {
+    if (attempts >= MAX_DETOUR_ATTEMPTS) break;
+    attempts++;
+    const secondary = dijkstra(startNode, endNode, ei);
+    if (!secondary) continue;
+    const g = reconstruct(secondary.prevEdge);
+    if (g && Math.abs(primaryLen - polylineLengthM(g)) >= 10) {
+      geom2 = g;
+      break;
+    }
+  }
+  if (!geom2) {
+    return [toCandidate("route_1", "demo", geom1, primaryLen, primaryLen / WALK_SPEED_MPS)];
+  }
+  const secondaryLen = polylineLengthM(geom2);
+  return [
+    toCandidate("route_1", "demo", geom1, primaryLen, primaryLen / WALK_SPEED_MPS),
+    toCandidate("route_2", "demo", geom2, secondaryLen, secondaryLen / WALK_SPEED_MPS),
+  ];
 }
 
 /**
- * The two demo routes between SLC and ENG used when the routing provider
- * is unavailable, so the demo never depends on an external service.
- * Route A follows the Gould St sidewalk (accessible). Route B cuts through
- * the campus plaza (shorter-looking, but passes steps + a reported block).
- */
-function slcToEngDemoRoutes(): RouteCandidate[] {
-  const routeA: Coordinates[] = [
-    { latitude: 43.6577, longitude: -79.3802 },
-    { latitude: 43.65772, longitude: -79.3795 },
-    { latitude: 43.65776, longitude: -79.3789 },
-    { latitude: 43.65785, longitude: -79.3783 },
-    { latitude: 43.6579, longitude: -79.37795 },
-    { latitude: 43.65805, longitude: -79.37785 },
-    { latitude: 43.658112, longitude: -79.377632 },
-  ];
-  const routeB: Coordinates[] = [
-    { latitude: 43.6577, longitude: -79.3802 },
-    { latitude: 43.65766, longitude: -79.3797 },
-    { latitude: 43.6576, longitude: -79.3791 },
-    { latitude: 43.65755, longitude: -79.3787 },
-    { latitude: 43.65755, longitude: -79.3784 },
-    { latitude: 43.6577, longitude: -79.3781 },
-    { latitude: 43.65795, longitude: -79.37805 },
-    { latitude: 43.6581, longitude: -79.3782 },
-    { latitude: 43.65812, longitude: -79.37775 },
-    { latitude: 43.658112, longitude: -79.377632 },
-  ];
-  const to = (id: string, g: Coordinates[]): RouteCandidate => {
-    const distance = polylineLengthM(g);
-    return toCandidate(id, "demo", g, distance, distance / WALK_SPEED_MPS);
-  };
-  return [to("route_1", routeA), to("route_2", routeB)];
-}
-
-function isSlcEng(start: Coordinates, end: Coordinates): boolean {
-  const near = (a: Coordinates, b: Coordinates, m: number) =>
-    Math.abs(a.latitude - b.latitude) < m && Math.abs(a.longitude - b.longitude) < m;
-  const slc = { latitude: 43.6577, longitude: -79.3802 };
-  const eng = { latitude: 43.658112, longitude: -79.377632 };
-  return (
-    (near(start, slc, 0.005) && near(end, eng, 0.005)) ||
-    (near(start, eng, 0.005) && near(end, slc, 0.005))
-  );
-}
-
-/**
- * Get at least two candidate walking routes.
- * Tries the real routing engine first; falls back to deterministic demo routes
- * so the demo never hard-fails on a third-party outage.
+ * Get candidate walking routes that follow real, walkable paths.
+ * Prefers the live engine (OSRM foot profile); supplements or falls back to
+ * routes built from the OpenStreetMap walkable way network. Never emits
+ * "as-the-crow-flies" fallbacks that ignore walkways.
  */
 export async function getCandidateRoutes(
   start: Coordinates,
   end: Coordinates,
+  ways?: Coordinates[][],
 ): Promise<{ routes: RouteCandidate[]; provider: "osrm" | "demo"; warning?: string }> {
+  const buildSidewalk = (): RouteCandidate[] =>
+    ways && ways.length > 0 && ways.length <= MAX_CORRIDOR_WAYS
+      ? sidewalkRoutesFromWays(start, end, ways)
+      : [];
+
   try {
     const routes = await fetchOsrmRoutes(start, end);
     if (routes.length >= 2) {
       return { routes, provider: "osrm" };
     }
     if (routes.length === 1) {
-      const demoRoutes = isSlcEng(start, end) ? slcToEngDemoRoutes() : genericDemoRoutes(start, end);
-      const extras = demoRoutes
+      const extras = buildSidewalk()
         .filter((d) => Math.abs(d.distanceMeters - routes[0]!.distanceMeters) > 30)
         .map((d, i) => ({ ...d, id: `alt-${i + 1}` }));
       return {
         routes: [routes[0]!, ...extras].slice(0, 3),
         provider: "osrm",
         warning:
-          "Live routing returned a single route - supplemented with cached demo alternatives for this area.",
+          extras.length === 0
+            ? "Only one walkable route could be found between these points."
+            : undefined,
       };
     }
-    throw new Error("OSRM returned no usable routes");
-  } catch (error) {
-    console.error("[routing] Falling back to demo routes:", error instanceof Error ? error.message : error);
-    const fallback = isSlcEng(start, end) ? slcToEngDemoRoutes() : genericDemoRoutes(start, end);
+    const sidewalk = buildSidewalk();
+    if (sidewalk.length >= 1) {
+      return {
+        routes: sidewalk.slice(0, 2),
+        provider: "demo",
+        warning:
+          "Live routing is temporarily unavailable - showing a route built from OpenStreetMap walkable paths.",
+      };
+    }
     return {
-      routes: fallback,
+      routes: [],
+      provider: "demo",
+      warning: "Could not find a walkable route between these points.",
+    };
+  } catch (error) {
+    console.error(
+      "[routing] Live routing unavailable:",
+      error instanceof Error ? error.message : error,
+    );
+    const sidewalk = buildSidewalk();
+    if (sidewalk.length >= 1) {
+      return {
+        routes: sidewalk.slice(0, 2),
+        provider: "demo",
+        warning:
+          "Live routing is temporarily unavailable - showing a route built from OpenStreetMap walkable paths.",
+      };
+    }
+    return {
+      routes: [],
       provider: "demo",
       warning:
-        "Live routing is temporarily unavailable - showing cached demo routes for this area.",
+        "Live routing is temporarily unavailable and no walkable path could be built from OpenStreetMap data.",
     };
   }
 }

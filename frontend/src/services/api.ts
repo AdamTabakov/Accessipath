@@ -1,15 +1,16 @@
 import type {
-  AccessibilityPoint,
   AccessibilityReport,
   AiObservation,
   AuthUserResponse,
   Place,
   ProfilePreferences,
+  RecentRoute,
   RouteMode,
   RoutesResponse,
   SafeUser,
   SignupResponse,
   VerifyResponse,
+  VoteDirection,
 } from "../types/index.js";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
@@ -79,20 +80,8 @@ export function getRoutes(params: RouteRequestParams): Promise<RoutesResponse> {
   return request<RoutesResponse>(`/api/routes?${q.toString()}`);
 }
 
-export function getPlaces(query: string): Promise<{ results: Place[] }> {
-  return request(`/api/places?q=${encodeURIComponent(query)}`);
-}
-
 export function geocode(query: string): Promise<{ results: Place[] }> {
   return request(`/api/geocode?q=${encodeURIComponent(query)}`);
-}
-
-export function getNearby(
-  lat: number,
-  lon: number,
-  radius = 150,
-): Promise<{ points: AccessibilityPoint[] }> {
-  return request(`/api/accessibility/nearby?lat=${lat}&lon=${lon}&radius=${radius}`);
 }
 
 export function getReports(): Promise<{ reports: AccessibilityReport[] }> {
@@ -110,6 +99,16 @@ export function createReport(input: {
   return request("/api/reports", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export function voteReport(
+  id: string,
+  direction: VoteDirection,
+): Promise<{ report: AccessibilityReport }> {
+  return request(`/api/reports/${encodeURIComponent(id)}/vote`, {
+    method: "POST",
+    body: JSON.stringify({ direction }),
   });
 }
 
@@ -166,4 +165,23 @@ export function login(input: {
 
 export function getMe(): Promise<{ user: SafeUser }> {
   return request("/api/auth/me");
+}
+
+export function getRecentRoutes(): Promise<{ routes: RecentRoute[] }> {
+  return request("/api/routes/recent");
+}
+
+export function saveRecentRoute(input: {
+  startLabel: string;
+  startLatitude: number;
+  startLongitude: number;
+  endLabel: string;
+  endLatitude: number;
+  endLongitude: number;
+  mode: RouteMode;
+}): Promise<{ route: RecentRoute }> {
+  return request("/api/routes/recent", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }

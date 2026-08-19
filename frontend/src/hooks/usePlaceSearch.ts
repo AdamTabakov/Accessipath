@@ -9,8 +9,7 @@ export interface UsePlaceSearchResult {
 }
 
 /**
- * Debounced place search: instant TMU landmarks from the backend, then
- * Nominatim results for anything beyond campus.
+ * Debounced place search via Nominatim geocoding, so it works anywhere on Earth.
  */
 export function usePlaceSearch(query: string): UsePlaceSearchResult {
   const [results, setResults] = useState<Place[]>([]);
@@ -28,16 +27,11 @@ export function usePlaceSearch(query: string): UsePlaceSearchResult {
     setSearching(true);
     timer.current = setTimeout(async () => {
       try {
-        const local = await api.getPlaces(query);
-        const combined = { results: [...local.results] };
-        if (local.results.length < 5) {
-          const remote = await api.geocode(query).catch(() => ({ results: [] as Place[] }));
-          combined.results = [...local.results, ...remote.results];
-        }
-        setResults(combined.results.slice(0, 8));
+        const remote = await api.geocode(query);
+        setResults(remote.results.slice(0, 8));
         setError(null);
       } catch (err) {
-        setError("Search unavailable. Try a Toronto place like 'Union Station' or 'CN Tower'.");
+        setError("Search is temporarily unavailable. Try again in a moment.");
       } finally {
         setSearching(false);
       }

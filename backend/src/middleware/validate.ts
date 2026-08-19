@@ -98,10 +98,8 @@ export const profileBodySchema = z.object({
   maxWalkDistanceMeters: z.number().int().min(0).max(50000),
 });
 
-export const nearbyQuerySchema = z.object({
-  lat: z.coerce.number().min(-90).max(90),
-  lon: z.coerce.number().min(-180).max(180),
-  radius: z.coerce.number().int().min(10).max(2000).default(100),
+export const voteBodySchema = z.object({
+  direction: z.enum(["up", "down"]),
 });
 
 export const emailSchema = z
@@ -134,6 +132,16 @@ export const resendBodySchema = z.object({
   email: emailSchema,
 });
 
+export const recentRouteBodySchema = z.object({
+  startLabel: z.string().trim().min(1).max(120),
+  startLatitude: latitudeSchema,
+  startLongitude: longitudeSchema,
+  endLabel: z.string().trim().min(1).max(120),
+  endLatitude: latitudeSchema,
+  endLongitude: longitudeSchema,
+  mode: routeModeSchema,
+});
+
 export type RoutesQuery = z.infer<typeof routesQuerySchema>;
 export type ReportBody = z.infer<typeof reportBodySchema>;
 export type AiBody = z.infer<typeof aiBodySchema>;
@@ -141,6 +149,7 @@ export type ProfileBody = z.infer<typeof profileBodySchema>;
 export type SignupBody = z.infer<typeof signupBodySchema>;
 export type LoginBody = z.infer<typeof loginBodySchema>;
 export type VerifyBody = z.infer<typeof verifyBodySchema>;
+export type RecentRouteBody = z.infer<typeof recentRouteBodySchema>;
 export type MobilityProfileType = z.infer<typeof mobilityProfileSchema>;
 export type RouteModeType = z.infer<typeof routeModeSchema>;
 export type { MobilityProfile, RouteMode };

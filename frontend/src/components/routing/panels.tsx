@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronUp, Info, ShieldCheck } from "lucide-react";
+import { ChevronDown, ChevronUp, Check, Info, ShieldCheck } from "lucide-react";
 import type { ConfidenceBreakdown, EvidenceItem, RouteResult } from "../../types/index.js";
 import { SourceBadge, StatusBadge, SeverityBadge } from "../ui.js";
 import { formatDistance } from "../../utils/format.js";
@@ -133,7 +133,21 @@ export function EvidencePanel({ route }: { route: RouteResult }) {
             <SourceBadge source={item.sourceType} />
           </div>
           <p className="mt-2 text-sm font-medium text-silk">{item.label}</p>
+          {item.verified && item.sourceType === "community" && (
+            <p className="mt-1 text-xs font-medium text-status-accessible">
+              <Check className="mr-1 inline h-3 w-3" aria-hidden="true" />
+              Community verified
+            </p>
+          )}
           {item.description && <p className="mt-0.5 text-sm text-ash">{item.description}</p>}
+          {item.photoUrl && (
+            <img
+              src={item.photoUrl}
+              alt={`Photo evidence: ${item.label}`}
+              loading="lazy"
+              className="mt-2 max-h-40 w-full rounded-card-sm border border-graphite object-cover"
+            />
+          )}
           <p className="mt-1 text-xs text-ash">{formatDistance(item.distanceMeters)} from the route</p>
         </li>
       ))}

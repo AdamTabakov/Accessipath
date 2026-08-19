@@ -20,7 +20,7 @@ const SOURCES = [
   {
     icon: <ShieldCheck className="h-5 w-5" aria-hidden="true" />,
     title: "Institutional accessibility data",
-    body: "Published accessibility data from institutions such as TMU's accessible entrances, ramps and elevators — high-confidence and traceable to a source URL.",
+    body: "Published accessibility data from institutions — accessible entrances, ramps and elevators — high-confidence and traceable to a source URL.",
     ring: 1 as const,
   },
   {
@@ -49,8 +49,8 @@ export function AboutPage() {
           </h1>
           <p className="mt-6 text-xl leading-relaxed text-platinum">
             Most maps optimize for getting somewhere quickly. They don't optimize for whether you can
-            actually use the route. AccessiPath adds an accessibility layer to mapping — across the
-            City of Toronto.
+            actually use the route. AccessiPath adds an accessibility layer to mapping — anywhere on
+            Earth.
           </p>
         </div>
       </section>

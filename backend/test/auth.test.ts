@@ -222,4 +222,70 @@ describe("Auth", () => {
     expect(authed.status).toBe(200);
     expect(authed.body.profile.mobilityProfile).toBe("walker");
   });
+
+  it("requires auth to read or save recent routes", async () => {
+    const anonGet = await request(app).get("/api/routes/recent");
+    expect(anonGet.status).toBe(401);
+
+    const anonPost = await request(app).post("/api/routes/recent").send({
+      startLabel: "SLC",
+      startLatitude: 43.6577,
+      startLongitude: -79.3802,
+      endLabel: "ENG",
+      endLatitude: 43.658112,
+      endLongitude: -79.377632,
+      mode: "most_accessible",
+    });
+    expect(anonPost.status).toBe(401);
+  });
+
+  it("saves and lists recent routes per user", async () => {
+    const email = uniqueEmail();
+    const signup = await request(app).post("/api/auth/signup").send({
+      email,
+      name: "Routes",
+      password: "password123",
+    });
+    await request(app).post("/api/auth/verify").send({ email, code: signup.body.devCode });
+    const login = await request(app).post("/api/auth/login").send({
+      email,
+      password: "password123",
+    });
+    const auth = `Bearer ${login.body.token}`;
+
+    const empty = await request(app).get("/api/routes/recent").set("Authorization", auth);
+    expect(empty.status).toBe(200);
+    expect(empty.body.routes).toEqual([]);
+
+    const post = await request(app).post("/api/routes/recent").set("Authorization", auth).send({
+      startLabel: "Union Station",
+      startLatitude: 43.6453,
+      startLongitude: -79.3806,
+      endLabel: "CN Tower",
+      endLatitude: 43.6426,
+      endLongitude: -79.3871,
+      mode: "balanced",
+    });
+    expect(post.status).toBe(201);
+    expect(post.body.route.mode).toBe("balanced");
+
+    const list = await request(app).get("/api/routes/recent").set("Authorization", auth);
+    expect(list.status).toBe(200);
+    expect(list.body.routes).toHaveLength(1);
+    expect(list.body.routes[0].startLabel).toBe("Union Station");
+    expect(list.body.routes[0].endLabel).toBe("CN Tower");
+
+    // Re-saving the same pair does not create a duplicate.
+    await request(app).post("/api/routes/recent").set("Authorization", auth).send({
+      startLabel: "Union Station",
+      startLatitude: 43.6453,
+      startLongitude: -79.3806,
+      endLabel: "CN Tower",
+      endLatitude: 43.6426,
+      endLongitude: -79.3871,
+      mode: "balanced",
+    });
+    const list2 = await request(app).get("/api/routes/recent").set("Authorization", auth);
+    expect(list2.body.routes).toHaveLength(1);
+  });
 });

@@ -1,4 +1,5 @@
 import type {
+  AccessibilityPoint,
   ProfilePreferences,
   RouteMode,
   RouteResult,
@@ -6,8 +7,39 @@ import type {
 import { getCandidateRoutes } from "../services/routing.js";
 import { buildEvidence, scoreRoute } from "../services/scoring.js";
 import { computeConfidence } from "../services/confidence.js";
+import { fetchCorridorData, getRegionalAccessibility } from "../services/osm.js";
+import { config } from "../config.js";
 import type { DataStore } from "../services/store.js";
 import { DEFAULT_PROFILE } from "../services/store.js";
+import { createTtlCache } from "../utils/ttlCache.js";
+import type { Coordinates } from "../types/index.js";
+
+/** Scored results cached per rounded origin/destination + profile + mode. */
+const resultCache = createTtlCache<string, { routes: RouteResult[]; warnings: string[] }>(
+  5 * 60_000,
+);
+
+function resultCacheKey(
+  start: { latitude: number; longitude: number },
+  end: { latitude: number; longitude: number },
+  profile: ProfilePreferences,
+  mode: RouteMode,
+): string {
+  return JSON.stringify([
+    start.latitude.toFixed(4),
+    start.longitude.toFixed(4),
+    end.latitude.toFixed(4),
+    end.longitude.toFixed(4),
+    profile.mobilityProfile,
+    profile.avoidStairs,
+    profile.preferRamps,
+    profile.preferElevators,
+    profile.maxSlope,
+    profile.preferSmoothSurface,
+    profile.maxWalkDistanceMeters,
+    mode,
+  ]);
+}
 
 function sortKey(
   mode: RouteMode,
@@ -43,8 +75,34 @@ export async function buildRoutes(opts: BuildRoutesOptions): Promise<{
 }> {
   const { start, end, profile, mode, store } = opts;
 
-  const { routes, provider, warning } = await getCandidateRoutes(start, end);
-  const points = await store.getAllAccessibilityPoints();
+  const cacheKey = resultCacheKey(start, end, profile, mode);
+  const cachedResult = resultCache.get(cacheKey);
+  if (cachedResult) return cachedResult;
+
+  const emptyData = () => ({ points: [] as AccessibilityPoint[], ways: [] as Coordinates[][] });
+  const corridorPromise =
+    config.nodeEnv === "test"
+      ? Promise.resolve(emptyData())
+      : fetchCorridorData(start, end).catch((error) => {
+          console.error(
+            "[routing] OSM corridor fetch failed:",
+            error instanceof Error ? error.message : error,
+          );
+          return emptyData();
+        });
+
+  const corridor = await corridorPromise;
+  const city = config.nodeEnv === "test" ? emptyData() : getRegionalAccessibility(start, end);
+
+  const [candidates, storePoints] = await Promise.all([
+    getCandidateRoutes(start, end, corridor.ways),
+    store.getAllAccessibilityPoints(),
+  ]);
+  const { routes, provider, warning } = candidates;
+
+  const merged = [...city.points, ...corridor.points, ...storePoints];
+  const seenIds = new Set<string>();
+  const points = merged.filter((p) => (seenIds.has(p.id) ? false : (seenIds.add(p.id), true)));
 
   const results: RouteResult[] = routes.map((route) => {
     const evidenceResult = buildEvidence(route, points, profile);
@@ -103,9 +161,16 @@ export async function buildRoutes(opts: BuildRoutesOptions): Promise<{
     );
   }
 
-  return { routes: results, warnings };
+  const result: { routes: RouteResult[]; warnings: string[] } = { routes: results, warnings };
+  resultCache.set(cacheKey, result);
+  return result;
 }
 
 export function profileFromDefaults(overrides: Partial<ProfilePreferences>): ProfilePreferences {
   return { ...DEFAULT_PROFILE, ...overrides };
+}
+
+/** Drop all cached scored routes (called when community data changes). */
+export function invalidateRouteResults(): void {
+  resultCache.clear();
 }

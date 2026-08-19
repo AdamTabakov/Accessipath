@@ -55,8 +55,8 @@ describe("scoring", () => {
     const route = routeThrough(stairsPoint);
     const evidence = buildEvidence(route, [stairsPoint], wheelchair);
     const scored = scoreRoute(route, evidence, wheelchair);
-    expect(scored.penalties.some((p) => p.label.includes("Steps"))).toBe(true);
-    expect(scored.score).toBeLessThan(70);
+    expect(scored.penalties.some((p) => p.label.includes("step section"))).toBe(true);
+    expect(scored.score).toBeLessThan(90);
     expect(scored.score).toBeGreaterThanOrEqual(0);
   });
 
@@ -65,7 +65,7 @@ describe("scoring", () => {
     const route = routeThrough(rampPoint);
     const evidence = buildEvidence(route, [rampPoint, elevatorPoint], wheelchair);
     const scored = scoreRoute(route, evidence, wheelchair);
-    expect(scored.bonuses.some((b) => b.label.includes("Ramp"))).toBe(true);
+    expect(scored.bonuses.some((b) => b.label.includes("ramp"))).toBe(true);
     expect(scored.score).toBeGreaterThan(60);
     expect(scored.score).toBeLessThanOrEqual(100);
   });

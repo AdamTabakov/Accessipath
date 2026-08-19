@@ -38,6 +38,8 @@ export type ReportType =
 
 export type ReportStatus = "pending" | "verified" | "rejected" | "expired";
 
+export type VoteDirection = "up" | "down";
+
 export interface AccessibilityPoint {
   id: string;
   buildingName?: string;
@@ -59,6 +61,7 @@ export interface AccessibilityPoint {
   isTemporary?: boolean;
   severity?: "info" | "warning" | "blocked";
   expiresAt?: string;
+  photoUrl?: string;
 }
 
 export interface EvidenceItem {
@@ -72,6 +75,8 @@ export interface EvidenceItem {
   status: AccessibilityStatus;
   severity: "info" | "warning" | "blocked";
   description?: string;
+  photoUrl?: string;
+  verified?: boolean;
 }
 
 export interface RouteFactors {
@@ -161,22 +166,14 @@ export interface AccessibilityReport {
   latitude: number;
   longitude: number;
   status: ReportStatus;
+  upvotes: number;
+  downvotes: number;
+  myVote?: VoteDirection | null;
+  verifiedAt?: string;
   photoUrl?: string;
   createdAt: string;
   expiresAt: string;
   aiObservation?: AiObservation;
-}
-
-export interface Building {
-  id: string;
-  name: string;
-  shortName: string;
-  address: string;
-  latitude: number;
-  longitude: number;
-  sourceUrl: string;
-  sourceType: EvidenceSource;
-  notes?: string;
 }
 
 export interface Place {
@@ -186,7 +183,7 @@ export interface Place {
   latitude: number;
   longitude: number;
   buildingId?: string;
-  source: "tmu" | "nominatim";
+  source: "curated" | "nominatim";
 }
 
 export interface AiAnalysisResult {
@@ -228,4 +225,16 @@ export interface SignupResponse {
 
 export interface VerifyResponse {
   user: SafeUser;
+}
+
+export interface RecentRoute {
+  id: string;
+  startLabel: string;
+  startLatitude: number;
+  startLongitude: number;
+  endLabel: string;
+  endLatitude: number;
+  endLongitude: number;
+  mode: RouteMode;
+  createdAt: string;
 }

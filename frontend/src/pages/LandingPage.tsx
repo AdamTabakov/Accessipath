@@ -68,7 +68,7 @@ const PRINCIPLES = FEATURES.map((f) => ({
 
 const STEPS = [
   { n: "01", title: "Pick your profile", body: "Wheelchair, walker, cane, or your own preferences." },
-  { n: "02", title: "Choose start & destination", body: "Search any address across Toronto." },
+  { n: "02", title: "Choose start & destination", body: "Search any address anywhere in the world." },
   { n: "03", title: "Compare routes", body: "Fastest, balanced, or most accessible — with scores." },
   { n: "04", title: "Understand why", body: "Penalties, bonuses, evidence and confidence, item by item." },
   { n: "05", title: "Contribute", body: "Report a blocked ramp. AI reads your photo on-device." },
@@ -179,7 +179,7 @@ export function LandingPage() {
               </MagneticLink>
           </div>
           <p className="mt-6 text-sm text-ash">
-            Coverage area: Toronto. Try TMU → Union Station.
+            Works worldwide — OpenStreetMap accessibility data
           </p>
         </div>
       </section>
@@ -285,17 +285,18 @@ export function LandingPage() {
         <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-28">
           <div className="relative overflow-hidden rounded-card bg-apple-blue p-10 text-center md:p-16">
             <Aurora
-              className="opacity-30"
+              className="opacity-50"
               blobs={[
-                { x: "0%", y: "0%", size: "60vmax", color: "rgba(255,255,255,0.18)" },
-                { x: "60%", y: "20%", size: "50vmax", color: "rgba(0,0,0,0.25)" },
+                { x: "5%", y: "-10%", size: "60vmax", color: "rgba(41,151,255,0.5)" },
+                { x: "70%", y: "20%", size: "50vmax", color: "rgba(186,98,252,0.25)" },
+                { x: "30%", y: "60%", size: "40vmax", color: "rgba(255,255,255,0.12)" },
               ]}
             />
             <div className="relative">
               <h2 className="font-display text-3xl font-semibold tracking-tight text-white md:text-5xl">
                 <TextReveal as="span" text="Plan your most usable route." />
               </h2>
-              <p className="mx-auto mt-4 max-w-xl text-white/85">
+              <p className="mx-auto mt-4 max-w-xl text-white/90">
                 Wheelchair profile with stairs, ramps and elevators already configured — no tracking,
                 no data sold.
               </p>

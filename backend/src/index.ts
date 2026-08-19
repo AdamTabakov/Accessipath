@@ -13,6 +13,7 @@ async function main(): Promise<void> {
   app.listen(config.port, () => {
     console.log(`[accessipath-api] listening on :${config.port} (${config.nodeEnv})`);
     console.log(`[accessipath-api] data store: ${store.kind}`);
+    console.log("[accessipath-api] region scans kick off lazily per route area (worldwide)");
   });
 }
 

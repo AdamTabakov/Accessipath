@@ -226,12 +226,14 @@ export function ScoreRing({
           strokeDashoffset={offset}
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 px-1">
         <NumberTicker
           value={Math.round(value)}
-          className="font-display text-2xl font-semibold text-silk"
+          className="font-display text-xl font-semibold leading-none text-silk"
         />
-        <span className="text-[10px] uppercase tracking-wide text-ash">{label}</span>
+        <span className="max-w-full text-center text-[9px] leading-tight tracking-wide text-ash">
+          {label}
+        </span>
       </div>
     </div>
   );

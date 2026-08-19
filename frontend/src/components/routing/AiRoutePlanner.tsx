@@ -32,8 +32,6 @@ function extractPhrases(query: string): { start: string | null; end: string | nu
 
 async function resolvePlace(phrase: string | null): Promise<Place | null> {
   if (!phrase || phrase.trim().length < 2) return null;
-  const local = await api.getPlaces(phrase).catch(() => ({ results: [] as Place[] }));
-  if (local.results.length > 0) return local.results[0]!;
   const remote = await api.geocode(phrase).catch(() => ({ results: [] as Place[] }));
   return remote.results[0] ?? null;
 }

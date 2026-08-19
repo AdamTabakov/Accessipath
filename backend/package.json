@@ -10,8 +10,8 @@
     "start": "node dist/src/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "seed": "tsx scripts/import-tmu.ts && tsx scripts/import-osm.ts",
-    "import:tmu": "tsx scripts/import-tmu.ts",
+    "seed": "tsx scripts/import-campus.ts && tsx scripts/import-osm.ts",
+    "import:campus": "tsx scripts/import-campus.ts",
     "import:osm": "tsx scripts/import-osm.ts"
   },
   "dependencies": {

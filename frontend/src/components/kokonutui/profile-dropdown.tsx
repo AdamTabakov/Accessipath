@@ -64,23 +64,21 @@ export default function ProfileDropdown({
         <div className="group relative">
           <DropdownMenuTrigger asChild>
             <button
-              className="flex items-center gap-3 rounded-2xl border border-zinc-800/60 bg-zinc-900 p-3 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-800/40 focus:outline-none"
+              className="flex items-center gap-2 rounded-pill border border-zinc-800/60 bg-zinc-900 py-1.5 pr-2 pl-1.5 transition-all duration-200 hover:border-zinc-700 hover:bg-zinc-800/40 focus:outline-none"
               type="button"
               aria-label={`Account menu for ${name}`}
             >
-              <div className="flex-1 text-left">
+              <div className="hidden flex-col text-right lg:block">
                 <div className="text-sm leading-tight font-medium tracking-tight text-zinc-100">
                   {name}
                 </div>
-                <div className="text-xs leading-tight tracking-tight text-zinc-400">
+                <div className="text-[10px] leading-tight tracking-tight text-zinc-400">
                   {email}
                 </div>
               </div>
-              <div className="relative">
-                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-apple-blue to-link-blue p-0.5">
-                  <div className="grid h-full w-full place-items-center rounded-full bg-zinc-900 font-semibold text-silk">
-                    {initials(name)}
-                  </div>
+              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-apple-blue to-link-blue p-0.5">
+                <div className="grid h-full w-full place-items-center rounded-full bg-zinc-900 text-xs font-semibold text-silk">
+                  {initials(name)}
                 </div>
               </div>
             </button>
