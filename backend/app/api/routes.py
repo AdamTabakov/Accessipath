@@ -19,7 +19,9 @@ from ..schemas import (
     VoteBody,
 )
 from ..services.geocoding import geocode
+from ..services.osm import TORONTO_BBOX, TORONTO_PAD_DEG
 from ..services.store import DataStore
+from ..utils.spatial import point_within_bounds
 from ..utils.uploads import save_photo
 from .deps import get_store, optional_auth, parse_coordinates, rate_limit, require_auth
 
@@ -70,6 +72,12 @@ async def routes(
     except ValueError as error:
         raise ApiValidationError([{"path": "coordinates", "message": str(error)}]) from error
 
+    if not (
+        point_within_bounds(start.latitude, start.longitude, TORONTO_BBOX, TORONTO_PAD_DEG)
+        and point_within_bounds(end.latitude, end.longitude, TORONTO_BBOX, TORONTO_PAD_DEG)
+    ):
+        raise HttpError(400, "Routes are currently available only within Toronto.")
+
     profile = profile_from_defaults(
         {
             "mobilityProfile": query.profile,
@@ -77,6 +85,11 @@ async def routes(
             "preferRamps": query.prefer_ramps == "true" if query.prefer_ramps is not None else None,
             "preferElevators": (
                 query.prefer_elevators == "true" if query.prefer_elevators is not None else None
+            ),
+            "preferSmoothSurface": (
+                query.prefer_smooth_surface == "true"
+                if query.prefer_smooth_surface is not None
+                else None
             ),
             "maxSlope": query.max_slope,
             "maxWalkDistanceMeters": query.max_walk_meters,

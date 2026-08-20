@@ -8,7 +8,7 @@ export function Footer() {
           <div className="max-w-md">
             <p className="font-display text-lg font-semibold text-silk">AccessiPath</p>
             <p className="mt-2 text-sm leading-relaxed text-ash">
-              Accessibility-first navigation across the world. Routes that are
+              Accessibility-first navigation across Toronto. Routes that are
               not just short — but usable.
             </p>
           </div>

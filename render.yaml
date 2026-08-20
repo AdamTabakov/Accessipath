@@ -56,7 +56,7 @@ services:
       - key: VITE_API_URL
         sync: false
       - key: VITE_OSM_TILE_URL
-        value: https://tile.openstreetmap.org/{z}/{x}/{y}.png
+        value: https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png
 
 # ---------- Scheduled job: refresh OSM accessibility import (Render Workflows/Cron) ----------
 jobs:

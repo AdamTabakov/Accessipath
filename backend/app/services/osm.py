@@ -1,7 +1,7 @@
 """OpenStreetMap / Overpass integration (port of the Node osm service).
 
 External data is treated as untrusted and validated before use. The lazy
-region scan gives worldwide coverage without ever blocking route calculation."""
+region scan gives Toronto coverage without ever blocking route calculation."""
 
 import asyncio
 import math
@@ -18,6 +18,9 @@ TORONTO_BBOX = {
     "maxLat": 43.855,
     "maxLon": -79.116,
 }
+
+# Small tolerance so points right at the city edge are not rejected.
+TORONTO_PAD_DEG = 0.1
 
 Bbox = dict[str, float]
 

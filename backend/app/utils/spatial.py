@@ -106,3 +106,16 @@ def is_valid_coordinate(lat: float, lon: float) -> bool:
         and -90 <= lat <= 90
         and -180 <= lon <= 180
     )
+
+
+def point_within_bounds(
+    latitude: float,
+    longitude: float,
+    bounds: dict[str, float],
+    pad_deg: float = 0.0,
+) -> bool:
+    """True when the point falls inside a {minLat,minLon,maxLat,maxLon} box."""
+    return (
+        bounds["minLat"] - pad_deg <= latitude <= bounds["maxLat"] + pad_deg
+        and bounds["minLon"] - pad_deg <= longitude <= bounds["maxLon"] + pad_deg
+    )

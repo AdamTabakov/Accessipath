@@ -7,6 +7,8 @@ import httpx
 
 from ..config import settings
 from ..schemas import Place
+from ..services.osm import TORONTO_BBOX
+from ..utils.spatial import point_within_bounds
 
 
 async def geocode(query: str) -> list[Place]:
@@ -16,6 +18,11 @@ async def geocode(query: str) -> list[Place]:
         "q": query,
         "limit": "5",
         "addressdetails": "1",
+        "viewbox": (
+            f"{TORONTO_BBOX['minLon']},{TORONTO_BBOX['minLat']},"
+            f"{TORONTO_BBOX['maxLon']},{TORONTO_BBOX['maxLat']}"
+        ),
+        "bounded": "1",
     }
     async with httpx.AsyncClient(timeout=8.0) as client:
         response = await client.get(
@@ -40,6 +47,8 @@ async def geocode(query: str) -> list[Place]:
         except (TypeError, ValueError):
             continue
         if not (math.isfinite(lat) and math.isfinite(lon)):
+            continue
+        if not point_within_bounds(lat, lon, TORONTO_BBOX):
             continue
         display_name = item.get("display_name") or ""
         name = item.get("name") or display_name.split(",")[0] or "Unknown place"

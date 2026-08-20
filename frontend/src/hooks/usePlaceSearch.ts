@@ -9,7 +9,7 @@ export interface UsePlaceSearchResult {
 }
 
 /**
- * Debounced place search via Nominatim geocoding, so it works anywhere on Earth.
+ * Debounced place search via Nominatim geocoding, bounded to the Toronto area.
  */
 export function usePlaceSearch(query: string): UsePlaceSearchResult {
   const [results, setResults] = useState<Place[]>([]);

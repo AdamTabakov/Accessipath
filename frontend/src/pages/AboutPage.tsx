@@ -49,8 +49,7 @@ export function AboutPage() {
           </h1>
           <p className="mt-6 text-xl leading-relaxed text-platinum">
             Most maps optimize for getting somewhere quickly. They don't optimize for whether you can
-            actually use the route. AccessiPath adds an accessibility layer to mapping — anywhere on
-            Earth.
+            actually use the route. AccessiPath adds an accessibility layer to mapping — across Toronto.
           </p>
         </div>
       </section>

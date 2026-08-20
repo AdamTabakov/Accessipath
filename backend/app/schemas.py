@@ -357,5 +357,6 @@ class RoutesQuery(BaseModel):
     avoid_stairs: Literal["true", "false"] | None = None
     prefer_ramps: Literal["true", "false"] | None = None
     prefer_elevators: Literal["true", "false"] | None = None
+    prefer_smooth_surface: Literal["true", "false"] | None = None
     max_slope: SlopeLevel | None = None
     max_walk_meters: int | None = Field(default=None, ge=0, le=50000)

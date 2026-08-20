@@ -74,6 +74,7 @@ export function getRoutes(params: RouteRequestParams): Promise<RoutesResponse> {
     avoid_stairs: String(params.profile.avoidStairs),
     prefer_ramps: String(params.profile.preferRamps),
     prefer_elevators: String(params.profile.preferElevators),
+    prefer_smooth_surface: String(params.profile.preferSmoothSurface),
     max_slope: params.profile.maxSlope,
     max_walk_meters: String(params.profile.maxWalkDistanceMeters),
   });

@@ -40,7 +40,7 @@ AccessiPath **recommends Route B** even though the alternatives look similar on 
 ## Features
 
 - **Route planner** with mode presets — *Most accessible*, *Fastest*, *Balanced* — and a customizable profile (wheelchair / walker / stroller / cane, avoid stairs, prefer ramps/elevators, max slope, max walking distance).
-- **Toronto-wide coverage.** Routes anywhere in the city via live OSRM foot routing, with OSM accessibility features pulled from an Overpass corridor query along each route. A scheduled city-wide import (`npm run import:osm`, or the Render daily job) pre-loads the Toronto bounding box into PostGIS. Route generation needs reachable OSRM/Overpass services; everything else works without them.
+- **Toronto-only.** The app is scoped to the City of Toronto: location search is bounded to the Toronto area and routes outside the city are rejected with a clear message. Routes anywhere in the city via live OSRM foot routing, with OSM accessibility features pulled from an Overpass corridor query along each route. A scheduled city-wide import (`npm run import:osm`, or the Render daily job) pre-loads the Toronto bounding box into PostGIS. Route generation needs reachable OSRM/Overpass services; everything else works without them.
 - **Accounts with email verification.** Sign up, verify your email with a 6-digit code (sent via Resend), and sign in — your accessibility preferences then follow you on any device.
 - **Recent routes.** Signed-in users get their last 10 planned routes saved and synced per account, with one-tap restore from the planner sidebar.
 - **Transparent scoring panel.** Expandable Accessibility Score with every penalty/bonus explained.
@@ -74,6 +74,8 @@ python -m venv .venv                    # optional but recommended
 .venv\Scripts\activate                  # Windows (Unix: source .venv/bin/activate)
 pip install -r requirements.txt
 cd ..
+# The npm scripts below auto-detect the venv, so you don't need to keep it
+# activated — they fall back to `python` on PATH if no .venv exists.
 
 # 2. Install frontend dependencies (npm workspaces)
 npm install
@@ -157,6 +159,8 @@ Weights are **configurable** in `backend/app/services/scoring.py` (`WEIGHTS`) ra
 2. Computes penalties/bonuses per feature, profile, and severity.
 3. Estimates data coverage along the route for the Confidence score.
 4. Sorts per mode — `most_accessible` ranks the highest score first (test-locked).
+
+Preferences change the math, not just the label. `avoidStairs` scales the stairs penalty down when off; `maxSlope` (`flat`/`moderate` vs `steep`/`any`) gates the steep-slope penalty; `preferSmoothSurface` gates the rough-surface penalty; `preferRamps`/`preferElevators` increase the matching bonus; and `maxWalkDistanceMeters` penalizes routes over your walking limit. Every preference is sent on every route request and reflected in the scores.
 
 ---
 

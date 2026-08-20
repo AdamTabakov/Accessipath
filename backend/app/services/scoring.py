@@ -240,10 +240,13 @@ def score_route(
     penalties: list[PenaltyEntry] = []
     bonuses: list[BonusEntry] = []
 
-    stairs_weight = (
+    base_stairs_weight = (
         WEIGHTS["stairs"]["custom"]
         if profile.mobilityProfile == "custom" and profile.avoidStairs
         else WEIGHTS["stairs"].get(profile.mobilityProfile, WEIGHTS["stairs"]["walker"])
+    )
+    stairs_weight = (
+        base_stairs_weight if profile.avoidStairs else max(3, round(base_stairs_weight * 0.4))
     )
 
     stair_items = [item for item in evidence if item.type == "stairs"]
@@ -296,7 +299,13 @@ def score_route(
             )
         )
 
-    if factors.steepSlopes > 0:
+    slope_weight = {
+        "flat": WEIGHTS["steepSlope"],
+        "moderate": WEIGHTS["steepSlope"],
+        "steep": 4,
+        "any": 0,
+    }.get(profile.maxSlope, WEIGHTS["steepSlope"])
+    if factors.steepSlopes > 0 and slope_weight > 0:
         label = (
             f"{factors.steepSlopes} steep slope"
             if factors.steepSlopes == 1
@@ -305,11 +314,12 @@ def score_route(
         penalties.append(
             PenaltyEntry(
                 label=label,
-                points=WEIGHTS["steepSlope"] * min(factors.steepSlopes, 2),
+                points=slope_weight * min(factors.steepSlopes, 2),
                 severity="warning",
             )
         )
-    if factors.roughSurface > 0:
+    rough_weight = WEIGHTS["roughSurface"] if profile.preferSmoothSurface else 3
+    if factors.roughSurface > 0 and rough_weight > 0:
         label = (
             f"{factors.roughSurface} rough surface section"
             if factors.roughSurface == 1
@@ -318,7 +328,7 @@ def score_route(
         penalties.append(
             PenaltyEntry(
                 label=label,
-                points=WEIGHTS["roughSurface"] * min(factors.roughSurface, 2),
+                points=rough_weight * min(factors.roughSurface, 2),
                 severity="warning",
             )
         )

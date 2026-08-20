@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { CircleMarker, Marker, Polyline, Tooltip } from "react-leaflet";
 import { divIcon } from "leaflet";
 import type { Coordinates, EvidenceItem } from "../../types/index.js";
@@ -53,9 +54,9 @@ export function evidenceIcon(item: EvidenceItem) {
   const glyph = item.severity === "blocked" ? "!" : STATUS_GLYPH[item.status] ?? "?";
   return divIcon({
     className: "",
-    html: `<div class="ax-marker ${cls}" style="width:24px;height:24px;font-size:12px;" role="img" aria-label="${item.status}">${glyph}</div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
+    html: `<div class="ax-marker ${cls}" style="width:20px;height:20px;font-size:10px;border-width:1.5px;opacity:0.9;" role="img" aria-label="${item.status}">${glyph}</div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
   });
 }
 
@@ -104,8 +105,8 @@ export function UnknownSections({ coordinates }: { coordinates: Coordinates[] })
         <CircleMarker
           key={`u-${i}`}
           center={[c.latitude, c.longitude]}
-          radius={6}
-          pathOptions={{ color: "#b64400", fillColor: "#b64400", fillOpacity: 0.6 }}
+          radius={4}
+          pathOptions={{ color: "#c2410c", fillColor: "#c2410c", fillOpacity: 0.4, opacity: 0.75 }}
         >
           <Tooltip>No accessibility data near this section</Tooltip>
         </CircleMarker>
@@ -127,23 +128,58 @@ export interface RouteLayerProps {
 export function RouteLayer({ routes, onSelect }: RouteLayerProps) {
   return (
     <>
-      {routes.map((route) => (
-        <Polyline
-          key={route.id}
-          positions={route.geometry.map((c) => [c.latitude, c.longitude] as [number, number])}
-          pathOptions={{
-            color: route.selected ? "#2997ff" : "#636366",
-            weight: route.selected ? 6 : 4,
-            opacity: route.selected ? 1 : 0.6,
-            dashArray: route.selected ? undefined : "8 6",
-          }}
-          eventHandlers={{ click: () => onSelect(route.id) }}
-        >
-          {route.isRecommended && (
-            <Tooltip sticky>Recommended route</Tooltip>
-          )}
-        </Polyline>
-      ))}
+      {routes.map((route) => {
+        const positions = route.geometry.map(
+          (c) => [c.latitude, c.longitude] as [number, number],
+        );
+        if (route.selected) {
+          return (
+            <Fragment key={route.id}>
+              <Polyline
+                positions={positions}
+                pathOptions={{
+                  color: "#0a0a0c",
+                  weight: 10,
+                  opacity: 0.55,
+                  lineCap: "round",
+                  lineJoin: "round",
+                }}
+                interactive={false}
+              />
+              <Polyline
+                positions={positions}
+                pathOptions={{
+                  color: "#2997ff",
+                  weight: 5,
+                  opacity: 1,
+                  lineCap: "round",
+                  lineJoin: "round",
+                }}
+                eventHandlers={{ click: () => onSelect(route.id) }}
+              >
+                {route.isRecommended && <Tooltip sticky>Recommended route</Tooltip>}
+              </Polyline>
+            </Fragment>
+          );
+        }
+        return (
+          <Polyline
+            key={route.id}
+            positions={positions}
+            pathOptions={{
+              color: "#8e8e93",
+              weight: 3,
+              opacity: 0.55,
+              dashArray: "6 8",
+              lineCap: "round",
+              lineJoin: "round",
+            }}
+            eventHandlers={{ click: () => onSelect(route.id) }}
+          >
+            {route.isRecommended && <Tooltip sticky>Recommended route</Tooltip>}
+          </Polyline>
+        );
+      })}
     </>
   );
 }

@@ -7,7 +7,11 @@ import { EvidenceMarkers, PlaceMarker, RouteLayer, UnknownSections, endIcon, sta
 
 const TILE_URL =
   (import.meta.env.VITE_OSM_TILE_URL as string | undefined) ??
-  "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+
+const TILE_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ' +
+  '&copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 function FitBounds({
   start,
@@ -43,9 +47,9 @@ function FitBounds({
 
 const REPORT_ICON = divIcon({
   className: "",
-  html: `<div class="ax-marker ax-marker-blocked" style="width:24px;height:24px;font-size:12px;" role="img" aria-label="Report">R</div>`,
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
+  html: `<div class="ax-marker ax-marker-blocked" style="width:20px;height:20px;font-size:10px;border-width:1.5px;opacity:0.85;" role="img" aria-label="Report">R</div>`,
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
 });
 
 export interface MapCanvasProps {
@@ -96,8 +100,9 @@ export function MapCanvas({
         attributionControl={true}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          attribution={TILE_ATTRIBUTION}
           url={TILE_URL}
+          subdomains={["a", "b", "c", "d"]}
         />
 
         <RouteLayer routes={selectedRoutes} onSelect={onSelectRoute} />
@@ -108,7 +113,7 @@ export function MapCanvas({
         {start && <PlaceMarker position={start} icon={startIcon("A")} label={start.label ?? "Start"} />}
         {end && <PlaceMarker position={end} icon={endIcon("B")} label={end.label ?? "End"} />}
 
-        {reports.slice(0, 8).map((r) => (
+        {reports.slice(0, 5).map((r) => (
           <Marker
             key={r.id}
             position={[r.latitude, r.longitude]}

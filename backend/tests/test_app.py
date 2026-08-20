@@ -58,6 +58,15 @@ class TestApi:
         res = client.get("/api/routes?start=999,-79.38&end=43.658112,-79.377632")
         assert res.status_code == 400
 
+    def test_rejects_routes_outside_toronto(self, client):
+        res = client.get("/api/routes?start=40.7128,-74.0060&end=43.658112,-79.377632")
+        assert res.status_code == 400
+        assert "Toronto" in res.json()["error"]
+
+    def test_accepts_routes_at_toronto_edge(self, client):
+        res = client.get("/api/routes?start=43.583,-79.64&end=43.65,-79.39")
+        assert res.status_code == 200
+
     def test_returns_at_least_two_scored_routes(self, client):
         res = client.get(ROUTE_QUERY)
         assert res.status_code == 200
@@ -83,6 +92,29 @@ class TestApi:
         )
         durations = [r["durationMinutes"] for r in res.json()["routes"]]
         assert durations == sorted(durations)
+
+    def test_preferences_alter_route_scores(self, client):
+        client.post(
+            "/api/reports",
+            json={
+                "type": "stairs",
+                "description": "Step section along the route.",
+                "latitude": 43.65785,
+                "longitude": -79.3791,
+            },
+        )
+        base = "start=43.6577,-79.3802&end=43.658112,-79.377632&mode=most_accessible"
+        cautious = client.get(f"/api/routes?{base}&profile=walker&avoid_stairs=true").json()[
+            "routes"
+        ]
+        relaxed = client.get(f"/api/routes?{base}&profile=walker&avoid_stairs=false").json()[
+            "routes"
+        ]
+
+        def score_of(routes, route_id):
+            return next(r["accessibilityScore"] for r in routes if r["id"] == route_id)
+
+        assert score_of(cautious, "route_1") < score_of(relaxed, "route_1")
 
     def test_creates_a_community_report(self, client):
         res = client.post(

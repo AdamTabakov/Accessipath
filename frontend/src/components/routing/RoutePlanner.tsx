@@ -61,7 +61,7 @@ export function RoutePlanner({
         </Button>
         <span className="ml-auto inline-flex items-center gap-1 text-xs text-ash">
           <LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />
-          Worldwide
+          Toronto
         </span>
       </div>
     </section>

@@ -68,7 +68,7 @@ const PRINCIPLES = FEATURES.map((f) => ({
 
 const STEPS = [
   { n: "01", title: "Pick your profile", body: "Wheelchair, walker, cane, or your own preferences." },
-  { n: "02", title: "Choose start & destination", body: "Search any address anywhere in the world." },
+  { n: "02", title: "Choose start & destination", body: "Search any address across Toronto." },
   { n: "03", title: "Compare routes", body: "Fastest, balanced, or most accessible — with scores." },
   { n: "04", title: "Understand why", body: "Penalties, bonuses, evidence and confidence, item by item." },
   { n: "05", title: "Contribute", body: "Report a blocked ramp. AI reads your photo on-device." },
@@ -179,7 +179,7 @@ export function LandingPage() {
               </MagneticLink>
           </div>
           <p className="mt-6 text-sm text-ash">
-            Works worldwide — OpenStreetMap accessibility data
+            Toronto-wide — OpenStreetMap accessibility data
           </p>
         </div>
       </section>
