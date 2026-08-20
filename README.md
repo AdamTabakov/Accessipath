@@ -121,6 +121,21 @@ npm run import:osm     # Overpass import for the City of Toronto bounding box
 
 ---
 
+## How Routing Works
+
+Route candidates come from two sources in `backend/app/services/routing.py`:
+
+1. **Live OSRM foot routing (primary).** The API asks OSRM for walkable routes between the start and end, requesting alternatives so users can compare options. When it returns two or more routes, those are used directly.
+2. **OpenStreetMap sidewalk graph (fallback + alternate).** When OSRM is down or returns only one route, the API builds its own walkable graph from the OSM ways collected in the route corridor, then runs **Dijkstra's algorithm** over it:
+   - Every corridor way is split into edges whose nodes are its vertices.
+   - The start and end points are **snapped** to the nearest way segment (within 500 m).
+   - A shortest-path search (minimizing walked distance) finds the primary route.
+   - A secondary route is found by re-running Dijkstra with each primary-path edge **banned one at a time**, keeping the first alternate that is at least 10 m longer — this gives users a genuine detour choice rather than a duplicate.
+
+This guarantees the app never emits "as-the-crow-flies" fallbacks that ignore walkways: any non-OSRM route is still composed of real OSM footpaths. Candidates are then passed to the scoring engine, which decides which one is actually *usable*.
+
+---
+
 ## How Scoring Works
 
 Conceptually:
