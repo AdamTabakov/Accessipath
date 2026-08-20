@@ -1,5 +1,5 @@
 # Render Blueprint for AccessiPath
-# Deploy: backend web service + frontend static site + PostGIS database + scheduled OSM refresh job.
+# Deploy: backend API (Python/FastAPI) + frontend static site + PostGIS database + scheduled OSM refresh job.
 
 databases:
   - name: accessipath-db
@@ -11,11 +11,11 @@ services:
   # ---------- Backend API ----------
   - type: web
     name: accessipath-api
-    runtime: node
+    runtime: python
     rootDir: backend
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
@@ -62,11 +62,11 @@ services:
 jobs:
   - type: scheduledJob
     name: accessipath-osm-refresh
-    runtime: node
+    runtime: python
     rootDir: backend
     schedule: "@daily"
-    buildCommand: npm install
-    startCommand: npx tsx scripts/import-osm.ts --update
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/import_osm.py --update
     envVars:
       - key: DATABASE_URL
         fromDatabase:

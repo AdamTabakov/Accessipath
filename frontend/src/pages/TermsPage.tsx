@@ -98,9 +98,9 @@ export function TermsPage() {
         <p>
           The AccessiPath name, branding, interface, and original code are the property of the
           AccessiPath project and its contributors. Map data is © OpenStreetMap contributors and is
-          used under the Open Database License (ODbL). Accessibility information used in the
-          demo is a curated dataset derived from public sources and remains subject to its original
-          rights.
+          used under the Open Database License (ODbL). Accessibility information is sourced from
+          OpenStreetMap contributors and, where applicable, from community reports, and remains
+          subject to its original rights.
         </p>
         <p>
           You may not copy, modify, distribute, or create derivative works of the Service's

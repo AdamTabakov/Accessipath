@@ -8,6 +8,13 @@ dist/
 build/
 coverage/
 
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.python-version
+
 # Environment / secrets
 .env
 .env.local

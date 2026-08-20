@@ -106,8 +106,7 @@ export function PrivacyPage() {
           </li>
           <li>
             <strong className="text-silk">OSRM</strong> — public route calculation for the
-            coordinates you request. (Some demo routes are computed from cached data on our own
-            servers and involve no third-party request.)
+            coordinates you request.
           </li>
         </ul>
         <p>
