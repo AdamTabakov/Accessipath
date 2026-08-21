@@ -6,6 +6,7 @@ from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .api.auth import router as auth_router
@@ -50,6 +51,7 @@ def create_app(store: Optional[DataStore] = None) -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization"],
     )
+    app.add_middleware(GZipMiddleware, minimum_size=500)
 
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")

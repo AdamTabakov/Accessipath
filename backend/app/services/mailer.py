@@ -29,7 +29,7 @@ def _escape_html(value: str) -> str:
 
 
 async def send_verification_email(to: str, name: str, code: str) -> VerificationEmailResult:
-    if not settings.resend_api_key:
+    if settings.is_test or not settings.resend_api_key:
         print(f"[mailer] dev fallback: verification code for {to} is {code}")
         return VerificationEmailResult(delivered=False, devCode=code)
 

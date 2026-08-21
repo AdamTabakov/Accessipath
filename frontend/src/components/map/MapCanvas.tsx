@@ -135,6 +135,7 @@ export function MapCanvas({
                   <img
                     src={r.photoUrl}
                     alt={`Report photo: ${r.description}`}
+                    loading="lazy"
                     className="mt-1 max-h-32 w-48 rounded object-cover"
                   />
                 </>

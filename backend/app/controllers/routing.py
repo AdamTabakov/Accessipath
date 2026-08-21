@@ -182,3 +182,4 @@ def profile_from_defaults(overrides: Optional[dict] = None) -> ProfilePreference
 
 def invalidate_route_results() -> None:
     result_cache.clear()
+    scored_cache.clear()

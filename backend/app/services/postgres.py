@@ -51,6 +51,19 @@ ALTER TABLE route_reports ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS route_reports_geo_idx
   ON route_reports USING GIST (geometry);
 
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  verified_at TIMESTAMPTZ,
+  verification_code_hash TEXT,
+  verification_expires_at TIMESTAMPTZ,
+  profile_json JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS users_email_idx ON users (email);
+
 CREATE TABLE IF NOT EXISTS report_votes (
   report_id TEXT NOT NULL REFERENCES route_reports(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -86,19 +99,6 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   profile_json JSONB NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
-
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
-  password_hash TEXT NOT NULL,
-  verified_at TIMESTAMPTZ,
-  verification_code_hash TEXT,
-  verification_expires_at TIMESTAMPTZ,
-  profile_json JSONB,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS users_email_idx ON users (email);
 
 CREATE TABLE IF NOT EXISTS recent_routes (
   id TEXT PRIMARY KEY,
@@ -150,6 +150,14 @@ def _float(value) -> float:
         return 0.0
 
 
+def _json_dumps_model(value: Any) -> str:
+    if hasattr(value, "model_dump"):
+        value = value.model_dump()
+    if isinstance(value, list):
+        value = [item.model_dump() if hasattr(item, "model_dump") else item for item in value]
+    return json.dumps(value)
+
+
 def _row_to_report(row: dict) -> AccessibilityReport:
     return AccessibilityReport(
         id=row["id"],
@@ -189,7 +197,9 @@ class PostgresStore:
             open=False,
         )
         await self.pool.open()
-        await self.pool.execute(SCHEMA)
+        async with self.pool.connection() as conn:
+            async with conn.transaction():
+                await conn.execute(SCHEMA)
         await self.invalidate_accessibility_points()
 
     async def close(self) -> None:
@@ -274,7 +284,7 @@ class PostgresStore:
                             ai_observation.feature,
                             ai_observation.confidence,
                             ai_observation.modelVersion,
-                            json.dumps(ai_observation.allDetections),
+                            _json_dumps_model(ai_observation.allDetections),
                         ),
                     )
         await self.invalidate_accessibility_points()
@@ -354,7 +364,7 @@ class PostgresStore:
                 observation.feature,
                 observation.confidence,
                 observation.modelVersion,
-                json.dumps(observation.allDetections),
+                _json_dumps_model(observation.allDetections),
             ),
         )
         return observation

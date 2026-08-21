@@ -3,10 +3,13 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { SkipLink } from "./components/navigation/SkipLink.js";
 import { Header } from "./components/navigation/Header.js";
 import { Footer } from "./components/navigation/Footer.js";
-import { LandingPage } from "./pages/LandingPage.js";
 import { Spinner } from "./components/ui.js";
 import { AuthProvider } from "./hooks/useAuth.js";
 import { ProfileProvider } from "./hooks/useProfile.js";
+
+const LandingPage = lazy(() =>
+  import("./pages/LandingPage.js").then((m) => ({ default: m.LandingPage })),
+);
 
 const MapPage = lazy(() => import("./pages/MapPage.js").then((m) => ({ default: m.MapPage })));
 const PreferencesPage = lazy(() =>
