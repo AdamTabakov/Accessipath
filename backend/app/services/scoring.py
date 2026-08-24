@@ -195,21 +195,21 @@ def build_evidence(
             (COVERAGE_RADIUS_M / (111000 * math.cos(sample.latitude * math.pi / 180)))
             / cell_size_deg
         )
-        known = False
+        has_data = False
         for dx in range(-lat_range, lat_range + 1):
-            if known:
+            if has_data:
                 break
             for dy in range(-lon_range, lon_range + 1):
-                if known:
+                if has_data:
                     break
                 bucket = grid.get((cx + dx, cy + dy))
                 if not bucket:
                     continue
                 for point in bucket:
                     if haversine_distance(sample, point) <= COVERAGE_RADIUS_M:
-                        known = True
+                        has_data = True
                         break
-        if known:
+        if has_data:
             known_samples += 1
         else:
             unknown_coordinates.append(sample)
