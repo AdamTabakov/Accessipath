@@ -375,7 +375,7 @@ async def get_toronto_accessibility_summary(store: DataStore) -> dict:
     """Aggregate accessibility features across all of Toronto.
 
     Returns counts and distribution of accessibility features from all sources:
-    OSM city-wide, institutional (TMU), and community reports. Unknown data is
+    OSM city-wide, institutional, and community reports. Unknown data is
     tracked separately from known inaccessible features. The OSM query covers
     the entire Toronto BBOX (43.581-43.855 lat, -79.639 to -79.116 lon).
 
@@ -398,7 +398,7 @@ async def get_toronto_accessibility_summary(store: DataStore) -> dict:
     except Exception as error:  # noqa: BLE001
         print(f"[osm] City-wide query failed: {error}")
 
-    # 2. Get institutional points (TMU)
+    # 2. Get institutional points
     from ..data.institutional_accessibility import INSTITUTIONAL_ACCESSIBILITY_POINTS
     institutional_points = list(INSTITUTIONAL_ACCESSIBILITY_POINTS)
 
@@ -502,7 +502,7 @@ async def get_toronto_accessibility_summary(store: DataStore) -> dict:
         "bySource": source_counts,
         "torontoBBox": bbox,
         "note": "Unknown status means data is unavailable, not that the feature is known to be inaccessible. "
-                "OSM city-wide covers all of Toronto; institutional data is from TMU; community reports are user-submitted.",
+                "OSM city-wide covers all of Toronto; institutional data; community reports are user-submitted.",
     }
 
 
