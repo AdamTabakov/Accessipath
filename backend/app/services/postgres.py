@@ -158,6 +158,15 @@ def _json_dumps_model(value: Any) -> str:
     return json.dumps(value)
 
 
+def _json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str | bytes | bytearray):
+        loaded = json.loads(value)
+        return loaded if isinstance(loaded, dict) else {}
+    return {}
+
+
 def _row_to_report(row: dict) -> AccessibilityReport:
     return AccessibilityReport(
         id=row["id"],
@@ -212,16 +221,29 @@ class PostgresStore:
             raise RuntimeError("PostgresStore not initialized.")
         return self.pool
 
+    async def _execute(self, sql: str, params: tuple[Any, ...] | None = None) -> None:
+        async with self._pool().connection() as conn:
+            await conn.execute(sql, params)
+
+    async def _fetchone(self, sql: str, params: tuple[Any, ...] | None = None) -> dict | None:
+        async with self._pool().connection() as conn:
+            cursor = await conn.execute(sql, params)
+            return await cursor.fetchone()
+
+    async def _fetchall(self, sql: str, params: tuple[Any, ...] | None = None) -> list[dict]:
+        async with self._pool().connection() as conn:
+            cursor = await conn.execute(sql, params)
+            return await cursor.fetchall()
+
     async def get_all_accessibility_points(self) -> list[AccessibilityPoint]:
         if self.points_cache and time.time() * 1000 - self.points_cache[1] < self.points_cache_ttl_ms:
             return self.points_cache[0]
-        rows = await self._pool().execute(
+        rows = await self._fetchall(
             "SELECT id, report_type, description, status, upvotes, downvotes, verified_at, "
             "photo_url, created_at, expires_at, NULL::text AS my_vote, "
             "ST_Y(geometry::geometry) AS lat, ST_X(geometry::geometry) AS lon "
             "FROM route_reports"
         )
-        rows = await rows.fetchall()
         points: list[AccessibilityPoint] = []
         for row in rows:
             report = _row_to_report(row)
@@ -236,7 +258,7 @@ class PostgresStore:
         self.points_cache = None
 
     async def get_reports(self, user_id: str | None = None) -> list[AccessibilityReport]:
-        rows = await self._pool().execute(
+        rows = await self._fetchall(
             "SELECT r.id, r.report_type, r.description, r.status, r.upvotes, r.downvotes, "
             "r.verified_at, r.photo_url, r.created_at, r.expires_at, v.direction AS my_vote, "
             "ST_Y(r.geometry::geometry) AS lat, ST_X(r.geometry::geometry) AS lon "
@@ -247,7 +269,6 @@ class PostgresStore:
             "ORDER BY r.created_at DESC",
             (user_id,),
         )
-        rows = await rows.fetchall()
         reports = [_row_to_report(row) for row in rows]
         for report in reports:
             report.status = effective_report_status(report)
@@ -356,7 +377,7 @@ class PostgresStore:
         return report
 
     async def create_ai_observation(self, observation: AiObservation) -> AiObservation:
-        await self._pool().execute(
+        await self._execute(
             "INSERT INTO ai_observations (report_id, feature, confidence, model_version, all_detections) "
             "VALUES (%s,%s,%s,%s,%s)",
             (
@@ -370,27 +391,23 @@ class PostgresStore:
         return observation
 
     async def get_profile(self, user_id: str | None = None) -> ProfilePreferences:
-        pool = self._pool()
         if user_id:
-            rows = await pool.execute("SELECT profile_json FROM users WHERE id = %s", (user_id,))
-            row = await rows.fetchone()
+            row = await self._fetchone("SELECT profile_json FROM users WHERE id = %s", (user_id,))
             if row and row.get("profile_json"):
-                return ProfilePreferences(**{**DEFAULT_PROFILE.model_dump(), **(json.loads(row["profile_json"]))})
-        rows = await pool.execute("SELECT profile_json FROM user_preferences WHERE id = 'default'")
-        row = await rows.fetchone()
+                return ProfilePreferences(**{**DEFAULT_PROFILE.model_dump(), **_json_object(row["profile_json"])})
+        row = await self._fetchone("SELECT profile_json FROM user_preferences WHERE id = 'default'")
         if not row:
             return DEFAULT_PROFILE.model_copy(deep=True)
-        return ProfilePreferences(**{**DEFAULT_PROFILE.model_dump(), **(json.loads(row["profile_json"]))})
+        return ProfilePreferences(**{**DEFAULT_PROFILE.model_dump(), **_json_object(row["profile_json"])})
 
     async def save_profile(
         self, profile: ProfilePreferences, user_id: str | None = None
     ) -> ProfilePreferences:
-        pool = self._pool()
         data = json.dumps(profile.model_dump())
         if user_id:
-            await pool.execute("UPDATE users SET profile_json = %s WHERE id = %s", (data, user_id))
+            await self._execute("UPDATE users SET profile_json = %s WHERE id = %s", (data, user_id))
         else:
-            await pool.execute(
+            await self._execute(
                 "INSERT INTO user_preferences (id, profile_json) VALUES ('default', %s) "
                 "ON CONFLICT (id) DO UPDATE SET profile_json = %s, updated_at = now()",
                 (data, data),
@@ -398,25 +415,23 @@ class PostgresStore:
         return profile.model_copy(deep=True)
 
     async def find_user_by_email(self, email: str) -> User | None:
-        rows = await self._pool().execute(
+        row = await self._fetchone(
             "SELECT id, email, name, password_hash, verified_at, verification_code_hash, "
             "verification_expires_at, created_at FROM users WHERE email = %s",
             (email.lower(),),
         )
-        row = await rows.fetchone()
         return self._row_to_user(row) if row else None
 
     async def get_user_by_id(self, id: str) -> User | None:
-        rows = await self._pool().execute(
+        row = await self._fetchone(
             "SELECT id, email, name, password_hash, verified_at, verification_code_hash, "
             "verification_expires_at, created_at FROM users WHERE id = %s",
             (id,),
         )
-        row = await rows.fetchone()
         return self._row_to_user(row) if row else None
 
     async def create_user(self, input_: dict[str, Any]) -> User:
-        await self._pool().execute(
+        await self._execute(
             "INSERT INTO users (id, email, name, password_hash, verification_code_hash, verification_expires_at, created_at) "
             "VALUES (%s,%s,%s,%s,%s,%s,%s)",
             (
@@ -435,7 +450,7 @@ class PostgresStore:
         return user
 
     async def update_user(self, id: str, patch: dict[str, Any]) -> User:
-        await self._pool().execute(
+        await self._execute(
             "UPDATE users "
             "SET verified_at = COALESCE(%s, verified_at), "
             "verification_code_hash = %s, "
@@ -454,12 +469,11 @@ class PostgresStore:
         return user
 
     async def get_recent_routes(self, user_id: str) -> list[RecentRoute]:
-        rows = await self._pool().execute(
+        rows = await self._fetchall(
             "SELECT id, start_label, start_lat, start_lon, end_label, end_lat, end_lon, mode, created_at "
             "FROM recent_routes WHERE user_id = %s ORDER BY created_at DESC LIMIT 10",
             (user_id,),
         )
-        rows = await rows.fetchall()
         return [
             RecentRoute(
                 id=row["id"],
@@ -476,8 +490,7 @@ class PostgresStore:
         ]
 
     async def add_recent_route(self, user_id: str, input_: dict[str, Any]) -> RecentRoute:
-        pool = self._pool()
-        await pool.execute(
+        await self._execute(
             "DELETE FROM recent_routes "
             "WHERE user_id = %s AND start_lat = %s AND start_lon = %s AND end_lat = %s AND end_lon = %s",
             (
@@ -489,7 +502,7 @@ class PostgresStore:
             ),
         )
         route_id = str(uuid.uuid4())
-        await pool.execute(
+        await self._execute(
             "INSERT INTO recent_routes "
             "(id, user_id, start_label, start_lat, start_lon, end_label, end_lat, end_lon, mode) "
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
@@ -505,7 +518,7 @@ class PostgresStore:
                 input_["mode"],
             ),
         )
-        await pool.execute(
+        await self._execute(
             "DELETE FROM recent_routes "
             "WHERE user_id = %s AND id NOT IN ("
             "  SELECT id FROM recent_routes WHERE user_id = %s ORDER BY created_at DESC LIMIT 10"

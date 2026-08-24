@@ -34,10 +34,19 @@ async def _fake_fetch_osrm(start: Coordinates, end: Coordinates) -> list[RouteCa
     ]
 
 
+async def _fake_fetch_detours(
+    start: Coordinates,
+    end: Coordinates,
+    existing: list[RouteCandidate],
+) -> list[RouteCandidate]:
+    return []
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _mock_osrm():
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(routing_module, "fetch_osrm_routes", _fake_fetch_osrm)
+    monkeypatch.setattr(routing_module, "fetch_osrm_detour_routes", _fake_fetch_detours)
     yield
     monkeypatch.undo()
 
@@ -72,9 +81,17 @@ class TestApi:
         assert res.status_code == 200
         body = res.json()
         assert len(body["routes"]) >= 2
+        evidence_sources = {
+            item["sourceType"]
+            for route in body["routes"]
+            for item in route["evidence"]
+        }
+        assert "institutional" in evidence_sources
         for route in body["routes"]:
             assert 0 <= route["accessibilityScore"] <= 100
             assert 0 <= route["dataConfidence"] <= 100
+            assert isinstance(route["aiSummary"], str)
+            assert route["aiSummary"]
             assert isinstance(route["geometry"], list)
             assert len(route["geometry"]) > 1
             assert isinstance(route["penalties"], list)

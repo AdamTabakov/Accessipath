@@ -12,6 +12,7 @@ import type {
   VerifyResponse,
   VoteDirection,
 } from "../types/index.js";
+import { notify } from "../components/notifications/events.js";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
 const TOKEN_KEY = "accessipath.token";
@@ -52,6 +53,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const message = data?.error ?? "Something went wrong. Please try again.";
     const error = new Error(message) as Error & { status?: number };
     error.status = res.status;
+    if (res.status !== 401) {
+      notify({
+        kind: "error",
+        title: "Request failed",
+        message,
+      });
+    }
     throw error;
   }
   if (data === null) throw new Error("Unexpected empty response.");

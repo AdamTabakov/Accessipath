@@ -12,11 +12,11 @@ import {
 import { MotionConfig } from "motion/react";
 import { MapBackground } from "../components/background/MapBackground.js";
 import { FloatingNav } from "../components/ui/floating-navbar.js";
-import { InfiniteMovingCards } from "../components/ui/infinite-moving-cards.js";
 import { ContainerScroll } from "../components/ui/container-scroll-animation.js";
 import {
   AnimatedGradientText,
   Aurora,
+  InfiniteMovingCards,
   MagneticLink,
   ShimmerLink,
   ShinyText,
@@ -60,12 +60,6 @@ const FEATURES = [
   },
 ];
 
-const PRINCIPLES = FEATURES.map((f) => ({
-  quote: f.body,
-  name: f.title,
-  title: "AccessiPath principle",
-}));
-
 const STEPS = [
   { n: "01", title: "Pick your profile", body: "Wheelchair, walker, cane, or your own preferences." },
   { n: "02", title: "Choose start & destination", body: "Search any address across Toronto." },
@@ -101,7 +95,7 @@ const COMPARISON = [
 
 function RouteCompareMock() {
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-4 rounded-2xl bg-true-black p-4 md:p-8">
+    <div className="flex h-full w-full flex-col justify-center gap-4 rounded-lg bg-charcoal p-4 md:p-8">
       {COMPARISON.map((r) => (
         <div
           key={r.name}
@@ -127,7 +121,7 @@ function RouteCompareMock() {
           <div className="mt-3 flex items-center gap-3">
             <span className={cn("font-display text-3xl font-semibold", r.tone)}>{r.score}</span>
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-smoke">
-              <div className={cn("h-full rounded-full", r.bar)} style={{ width: `${r.score}%` }} />
+              <div className="h-full rounded-full" style={{ width: `${r.score}%` }} />
             </div>
           </div>
         </div>
@@ -155,13 +149,13 @@ export function LandingPage() {
 
       {/* Hero — map-themed animated background */}
       <section className="relative overflow-hidden bg-true-black">
-        <MapBackground opacity="opacity-50" />
+        <MapBackground opacity="opacity-50" animated />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-true-black/30 to-true-black" />
         <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 md:py-40">
           <p className="mb-6 text-base tracking-tight text-silk/80">
             <ShinyText>Accessibility-first navigation</ShinyText>
           </p>
-          <h1 className="max-w-4xl font-display text-5xl font-semibold leading-[1.05] tracking-tight text-silk sm:text-6xl md:text-8xl">
+          <h1 className="max-w-4xl font-display text-[56px] font-semibold leading-[1.05] tracking-[-0.015em] text-silk sm:text-[64px] md:text-[80px]">
             <TextGenerateEffect words="A short route is not always a usable route." />
           </h1>
           <p className="mt-8 max-w-2xl text-lg leading-relaxed text-platinum md:text-xl">
@@ -184,11 +178,10 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Principles — infinite moving cards */}
+      {/* Principles */}
       <section className="relative overflow-hidden border-t border-graphite bg-true-black">
-        <Aurora className="opacity-40" />
         <div className="relative mx-auto max-w-7xl px-4 pt-20 sm:px-6 md:pt-28">
-          <h2 className="font-display text-4xl font-semibold tracking-tight text-silk md:text-6xl">
+          <h2 className="font-display text-[40px] font-semibold tracking-tight text-silk md:text-[56px]">
             <TextReveal text="Built around one question:" />
             <br />
             <AnimatedGradientText>can you actually use this route?</AnimatedGradientText>
@@ -197,7 +190,23 @@ export function LandingPage() {
             The principles that guide every route we recommend.
           </p>
         </div>
-        <InfiniteMovingCards items={PRINCIPLES} direction="left" speed="slow" pauseOnHover />
+        <InfiniteMovingCards
+          className="relative mt-12 pb-16"
+          duration={68}
+        >
+          {FEATURES.map((feature) => (
+            <article
+              key={feature.title}
+              className="w-[min(82vw,360px)] shrink-0 rounded-card bg-charcoal p-5"
+            >
+              <div className="mb-4 grid h-10 w-10 place-items-center rounded-full bg-smoke text-link-blue">
+                {feature.icon}
+              </div>
+              <h3 className="text-lg font-semibold text-silk">{feature.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-ash">{feature.body}</p>
+            </article>
+          ))}
+        </InfiniteMovingCards>
       </section>
 
       {/* Route comparison — container scroll animation */}
@@ -205,7 +214,7 @@ export function LandingPage() {
         <ContainerScroll
           titleComponent={
             <div className="px-4">
-              <h2 className="font-display text-4xl font-semibold tracking-tight text-silk md:text-6xl">
+              <h2 className="font-display text-[40px] font-semibold tracking-tight text-silk md:text-[56px]">
                 <TextReveal text="Two routes. One destination." />
               </h2>
               <p className="mx-auto mt-6 max-w-2xl text-lg text-platinum">
@@ -222,7 +231,7 @@ export function LandingPage() {
       {/* How it works */}
       <section className="border-t border-graphite bg-true-black">
         <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-28">
-          <h2 className="font-display text-4xl font-semibold tracking-tight text-silk md:text-6xl">
+          <h2 className="font-display text-[40px] font-semibold tracking-tight text-silk md:text-[56px]">
             <TextReveal text="From search to explanation in five steps." />
           </h2>
           <ol className="mt-16 grid gap-6 md:grid-cols-2 lg:grid-cols-5">
@@ -244,7 +253,7 @@ export function LandingPage() {
         <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 md:py-28">
           <div className="grid gap-10 lg:grid-cols-2">
             <div>
-              <h2 className="font-display text-4xl font-semibold tracking-tight text-silk md:text-5xl">
+              <h2 className="font-display text-[40px] font-semibold tracking-tight text-silk md:text-[50px]">
                 <TextReveal text="We never pretend the data is complete." />
               </h2>
               <p className="mt-6 text-lg leading-relaxed text-platinum">
@@ -293,7 +302,7 @@ export function LandingPage() {
               ]}
             />
             <div className="relative">
-              <h2 className="font-display text-3xl font-semibold tracking-tight text-white md:text-5xl">
+              <h2 className="font-display text-[32px] font-semibold tracking-tight text-white md:text-[48px]">
                 <TextReveal as="span" text="Plan your most usable route." />
               </h2>
               <p className="mx-auto mt-4 max-w-xl text-white/90">

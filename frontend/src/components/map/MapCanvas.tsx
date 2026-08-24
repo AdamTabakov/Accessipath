@@ -52,6 +52,13 @@ const REPORT_ICON = divIcon({
   iconAnchor: [10, 10],
 });
 
+const PICKED_LOCATION_ICON = divIcon({
+  className: "",
+  html: `<div class="ax-marker" style="background:#b64400;width:28px;height:28px;font-size:12px;">+</div>`,
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
+
 export interface MapCanvasProps {
   routes: RouteResult[];
   selectedRouteId: string | null;
@@ -83,12 +90,19 @@ export function MapCanvas({
   pickedLocation,
   onPickLocation,
 }: MapCanvasProps) {
-  const selectedRoutes = routes.map((r) => ({
-    id: r.id,
-    geometry: r.geometry,
-    selected: r.id === selectedRouteId,
-    isRecommended: routes[0]?.id === r.id,
-  }));
+  const selectedRoutes = useMemo(
+    () =>
+      routes.map((r) => ({
+        id: r.id,
+        positions: r.geometry.map((c) => [c.latitude, c.longitude] as [number, number]),
+        selected: r.id === selectedRouteId,
+        isRecommended: routes[0]?.id === r.id,
+      })),
+    [routes, selectedRouteId],
+  );
+
+  const startMarkerIcon = useMemo(() => startIcon("A"), []);
+  const endMarkerIcon = useMemo(() => endIcon("B"), []);
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-card border border-graphite">
@@ -110,8 +124,8 @@ export function MapCanvas({
 
         {showUnknown && <UnknownSections coordinates={unknownCoordinates} />}
 
-        {start && <PlaceMarker position={start} icon={startIcon("A")} label={start.label ?? "Start"} />}
-        {end && <PlaceMarker position={end} icon={endIcon("B")} label={end.label ?? "End"} />}
+        {start && <PlaceMarker position={start} icon={startMarkerIcon} label={start.label ?? "Start"} />}
+        {end && <PlaceMarker position={end} icon={endMarkerIcon} label={end.label ?? "End"} />}
 
         {reports.slice(0, 5).map((r) => (
           <Marker
@@ -153,12 +167,7 @@ export function MapCanvas({
         {pickedLocation && (
           <Marker
             position={[pickedLocation.latitude, pickedLocation.longitude]}
-            icon={divIcon({
-              className: "",
-              html: `<div class="ax-marker" style="background:#b64400;width:28px;height:28px;font-size:12px;">+</div>`,
-              iconSize: [28, 28],
-              iconAnchor: [14, 14],
-            })}
+            icon={PICKED_LOCATION_ICON}
             title="Report location"
           >
             <Tooltip>Report location</Tooltip>

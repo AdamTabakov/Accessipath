@@ -14,11 +14,12 @@ from ..schemas import (
     RouteMode,
     RouteResult,
 )
+from ..data.institutional_accessibility import INSTITUTIONAL_ACCESSIBILITY_POINTS
 from ..services.confidence import compute_confidence
 from ..services.osm import fetch_corridor_data, get_regional_accessibility
 from ..services.routing import get_candidate_routes
 from ..services.scoring import build_evidence, score_route
-from ..services.store import DEFAULT_PROFILE, DataStore
+from ..services.store import DEFAULT_PROFILE, PROFILE_PRESETS, DataStore
 from ..utils.ttl_cache import TtlCache
 
 result_cache: TtlCache[str, dict] = TtlCache(ttl_ms=5 * 60_000)
@@ -51,6 +52,19 @@ def result_cache_key(
     return f"{base_route_cache_key(start, end, profile)}|{mode}"
 
 
+def institutional_points_near(start: Coordinates, end: Coordinates) -> list[AccessibilityPoint]:
+    margin_deg = 0.006
+    min_lat = min(start.latitude, end.latitude) - margin_deg
+    max_lat = max(start.latitude, end.latitude) + margin_deg
+    min_lon = min(start.longitude, end.longitude) - margin_deg
+    max_lon = max(start.longitude, end.longitude) + margin_deg
+    return [
+        point
+        for point in INSTITUTIONAL_ACCESSIBILITY_POINTS
+        if min_lat <= point.latitude <= max_lat and min_lon <= point.longitude <= max_lon
+    ]
+
+
 def sort_key(mode: RouteMode, r: dict) -> float:
     accessibility_score = r["accessibilityScore"]
     data_confidence = r["dataConfidence"]
@@ -63,6 +77,39 @@ def sort_key(mode: RouteMode, r: dict) -> float:
     score_norm = accessibility_score / 100
     duration_norm = min(1, duration_minutes / 60)
     return (0.6 * score_norm - 0.4 * duration_norm) * -1
+
+
+def route_summary(
+    route_score: int,
+    confidence: int,
+    factors,
+    penalties: list[PenaltyEntry],
+    bonuses,
+    profile: ProfilePreferences,
+) -> str:
+    profile_label = profile.mobilityProfile.replace("_", " ")
+    critical = next((p for p in penalties if p.severity == "critical"), None)
+    warning = next((p for p in penalties if p.severity == "warning"), None)
+    top_bonus = bonuses[0] if bonuses else None
+
+    if critical:
+        lead = f"For a {profile_label} profile, this route has a major concern: {critical.label.lower()}."
+    elif warning:
+        lead = f"For a {profile_label} profile, this route is usable but has a caution: {warning.label.lower()}."
+    elif top_bonus:
+        lead = f"For a {profile_label} profile, this route looks favorable because it includes {top_bonus.label.lower()}."
+    else:
+        lead = f"For a {profile_label} profile, this route has no mapped accessibility blockers nearby."
+
+    if factors.unknownSections > 0:
+        coverage = (
+            f" {factors.unknownSections} of {factors.totalSamples} sampled sections have unknown accessibility data,"
+            " so confidence is limited."
+        )
+    else:
+        coverage = " Accessibility data covers the sampled route sections."
+
+    return f"{lead}{coverage} Score {route_score}/100, confidence {confidence}/100."
 
 
 async def build_routes(
@@ -95,8 +142,9 @@ async def build_routes(
 
         candidates = await get_candidate_routes(start, end, corridor["ways"])
         store_points = await store.get_all_accessibility_points()
+        institutional_points = institutional_points_near(start, end)
 
-        merged = [*city["points"], *corridor["points"], *store_points]
+        merged = [*institutional_points, *city["points"], *corridor["points"], *store_points]
         seen: set[str] = set()
         points: list[AccessibilityPoint] = []
         for point in merged:
@@ -133,6 +181,14 @@ async def build_routes(
                     "id": route.id,
                     "mode": mode,
                     "provider": route.provider,
+                    "aiSummary": route_summary(
+                        route_score=route_score.score,
+                        confidence=confidence_result.confidence,
+                        factors=evidence_result.factors,
+                        penalties=route_score.penalties,
+                        bonuses=route_score.bonuses,
+                        profile=profile,
+                    ),
                     "distanceMeters": route.distanceMeters,
                     "durationMinutes": route.durationMinutes,
                     "accessibilityScore": route_score.score,
@@ -174,7 +230,9 @@ async def build_routes(
 
 
 def profile_from_defaults(overrides: Optional[dict] = None) -> ProfilePreferences:
-    merged = DEFAULT_PROFILE.model_dump()
+    profile_name = (overrides or {}).get("mobilityProfile") or DEFAULT_PROFILE.mobilityProfile
+    base = PROFILE_PRESETS.get(profile_name, DEFAULT_PROFILE)
+    merged = base.model_dump()
     if overrides:
         merged.update({k: v for k, v in overrides.items() if v is not None})
     return ProfilePreferences(**merged)

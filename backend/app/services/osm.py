@@ -11,6 +11,7 @@ import httpx
 
 from ..config import settings
 from ..schemas import AccessibilityPoint, AccessibilityStatus, Coordinates
+from ..services.store import DataStore
 
 TORONTO_BBOX = {
     "minLat": 43.581,
@@ -368,6 +369,141 @@ async def _scan_region(center: Coordinates) -> None:
         print(f"[osm] Region scan failed: {error}")
     finally:
         region_pending.discard(key)
+
+
+async def get_toronto_accessibility_summary(store: DataStore) -> dict:
+    """Aggregate accessibility features across all of Toronto.
+
+    Returns counts and distribution of accessibility features from all sources:
+    OSM city-wide, institutional (TMU), and community reports. Unknown data is
+    tracked separately from known inaccessible features. The OSM query covers
+    the entire Toronto BBOX (43.581-43.855 lat, -79.639 to -79.116 lon).
+
+    Feature type breakdown mirrors the OSM tags queried city-wide:
+    steps→stairs, elevator→elevator, ramp→ramp, crossing→crossing,
+    barrier→barrier, and surface/incline features.
+    """
+    from ..schemas import AccessibilityPoint, EvidenceSource, AccessibilityStatus
+
+    bbox = TORONTO_BBOX
+
+    # 1. Query OSM city-wide data
+    city_data: dict = {"points": [], "ways": []}
+    try:
+        result = await query_osm_accessibility(bbox, 180_000, build_city_query)
+        city_data = {
+            "points": osm_elements_to_accessibility_points(result["elements"]),
+            "ways": osm_elements_to_way_polylines(result["elements"]),
+        }
+    except Exception as error:  # noqa: BLE001
+        print(f"[osm] City-wide query failed: {error}")
+
+    # 2. Get institutional points (TMU)
+    from ..data.institutional_accessibility import INSTITUTIONAL_ACCESSIBILITY_POINTS
+    institutional_points = list(INSTITUTIONAL_ACCESSIBILITY_POINTS)
+
+    # 3. Get community reports from store
+    store_points: list[AccessibilityPoint] = []
+    if hasattr(store, "get_all_accessibility_points"):
+        try:
+            store_points = await store.get_all_accessibility_points()
+        except Exception as error:  # noqa: BLE001
+            print(f"[store] Failed to get reports: {error}")
+
+    # 4. Merge all points and aggregate with detailed breakdowns
+    all_points: list[AccessibilityPoint] = [
+        *city_data["points"],
+        *institutional_points,
+        *store_points,
+    ]
+
+    # Count by top-level type
+    type_counts: dict[str, int] = {}
+    stairs_count = 0
+    elevator_count = 0
+    ramp_count = 0
+    crossing_count = 0
+    barrier_count = 0
+    other_count = 0
+
+    # Count by status
+    status_counts: dict[str, int] = {"accessible": 0, "inaccessible": 0, "unknown": 0}
+
+    # Count by source
+    source_counts: dict[str, int] = {}
+
+    # Feature category breakdown (for top-level types)
+    feature_categories: dict[str, int] = {
+        "entrance": 0,
+        "ramp": 0,
+        "elevator": 0,
+        "stairs": 0,
+        "crossing": 0,
+        "barrier": 0,
+        "other": 0,
+    }
+
+    for point in all_points:
+        # Top-level type count
+        ptype = point.type
+        type_counts[ptype] = type_counts.get(ptype, 0) + 1
+
+        # Map top-level types to categories
+        if ptype == "entrance":
+            feature_categories["entrance"] += 1
+        elif ptype == "ramp":
+            feature_categories["ramp"] += 1
+        elif ptype == "elevator":
+            feature_categories["elevator"] += 1
+        elif ptype == "stairs":
+            stairs_count += 1
+            feature_categories["stairs"] += 1
+        elif ptype == "crossing":
+            crossing_count += 1
+            feature_categories["crossing"] += 1
+        elif ptype == "barrier":
+            barrier_count += 1
+            feature_categories["barrier"] += 1
+        else:
+            other_count += 1
+            feature_categories["other"] += 1
+
+        # Status count
+        wheelchair = point.wheelchair
+        if wheelchair == "accessible":
+            status_counts["accessible"] += 1
+        elif wheelchair == "inaccessible":
+            status_counts["inaccessible"] += 1
+        elif wheelchair == "unknown" or wheelchair is None:
+            status_counts["unknown"] += 1
+
+        # Source count
+        source = point.sourceType
+        source_counts[source] = source_counts.get(source, 0) + 1
+
+    # Sub-type counts for OSM-derived points (stairs, elevator, ramp, crossing)
+    # These are also tracked separately in feature_categories above
+
+    total = len(all_points)
+
+    # Build detailed type breakdown
+    detailed_type_counts: dict[str, int] = {}
+    for ptype, count in type_counts.items():
+        if ptype in ("stairs", "elevator", "ramp", "crossing", "barrier"):
+            detailed_type_counts[ptype] = count
+        else:
+            detailed_type_counts[ptype] = count
+
+    return {
+        "totalFeatures": total,
+        "byCategory": feature_categories,
+        "detailByType": detailed_type_counts,
+        "byStatus": status_counts,
+        "bySource": source_counts,
+        "torontoBBox": bbox,
+        "note": "Unknown status means data is unavailable, not that the feature is known to be inaccessible. "
+                "OSM city-wide covers all of Toronto; institutional data is from TMU; community reports are user-submitted.",
+    }
 
 
 def get_regional_accessibility(start: Coordinates, end: Coordinates) -> dict:

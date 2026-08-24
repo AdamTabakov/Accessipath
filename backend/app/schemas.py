@@ -148,6 +148,7 @@ class RouteResult(BaseModel):
     id: str
     mode: RouteMode
     provider: Literal["osrm", "demo"]
+    aiSummary: str
     distanceMeters: int
     durationMinutes: int
     accessibilityScore: int

@@ -33,6 +33,47 @@ DEFAULT_PROFILE = ProfilePreferences(
     maxWalkDistanceMeters=2000,
 )
 
+PROFILE_PRESETS: dict[str, ProfilePreferences] = {
+    "wheelchair": DEFAULT_PROFILE.model_copy(deep=True),
+    "walker": DEFAULT_PROFILE.model_copy(
+        update={
+            "mobilityProfile": "walker",
+            "avoidStairs": True,
+            "preferRamps": True,
+            "preferElevators": False,
+            "maxSlope": "moderate",
+            "preferSmoothSurface": True,
+            "maxWalkDistanceMeters": 1800,
+        },
+        deep=True,
+    ),
+    "cane": DEFAULT_PROFILE.model_copy(
+        update={
+            "mobilityProfile": "cane",
+            "avoidStairs": True,
+            "preferRamps": False,
+            "preferElevators": False,
+            "maxSlope": "moderate",
+            "preferSmoothSurface": True,
+            "maxWalkDistanceMeters": 2200,
+        },
+        deep=True,
+    ),
+    "limited_mobility": DEFAULT_PROFILE.model_copy(
+        update={
+            "mobilityProfile": "limited_mobility",
+            "avoidStairs": True,
+            "preferRamps": True,
+            "preferElevators": True,
+            "maxSlope": "flat",
+            "preferSmoothSurface": True,
+            "maxWalkDistanceMeters": 1200,
+        },
+        deep=True,
+    ),
+    "custom": DEFAULT_PROFILE.model_copy(update={"mobilityProfile": "custom"}, deep=True),
+}
+
 REPORT_LIFETIME_DAYS = 90
 VERIFIED_LIFETIME_DAYS = 90
 VERIFY_UPVOTES = 3

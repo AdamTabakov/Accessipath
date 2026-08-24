@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from ..config import settings
 from ..controllers.routing import build_routes, invalidate_route_results, profile_from_defaults
+from ..services.osm import get_toronto_accessibility_summary
 from ..core.errors import ApiValidationError, HttpError
 from ..core.ratelimit import api_limiter, strict_limiter
 from ..schemas import (
@@ -45,6 +46,12 @@ async def health(store: DataStore = Depends(get_store)):
         "time": datetime.now(timezone.utc).isoformat(),
         "dataStore": store.kind,
     }
+
+
+@router.get("/api/accessibility-summary", )
+async def accessibility_summary(store: DataStore = Depends(get_store)):
+    summary = await get_toronto_accessibility_summary(store)
+    return summary
 
 
 @router.get("/api/geocode", dependencies=[Depends(_strict_limit)])

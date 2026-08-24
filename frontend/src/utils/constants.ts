@@ -22,6 +22,41 @@ export const DEFAULT_PROFILE: ProfilePreferences = {
   maxWalkDistanceMeters: 2000,
 };
 
+export const PROFILE_PRESETS: Record<MobilityProfile, ProfilePreferences> = {
+  wheelchair: { ...DEFAULT_PROFILE },
+  walker: {
+    mobilityProfile: "walker",
+    avoidStairs: true,
+    preferRamps: true,
+    preferElevators: false,
+    maxSlope: "moderate",
+    preferSmoothSurface: true,
+    maxWalkDistanceMeters: 1800,
+  },
+  cane: {
+    mobilityProfile: "cane",
+    avoidStairs: true,
+    preferRamps: false,
+    preferElevators: false,
+    maxSlope: "moderate",
+    preferSmoothSurface: true,
+    maxWalkDistanceMeters: 2200,
+  },
+  limited_mobility: {
+    mobilityProfile: "limited_mobility",
+    avoidStairs: true,
+    preferRamps: true,
+    preferElevators: true,
+    maxSlope: "flat",
+    preferSmoothSurface: true,
+    maxWalkDistanceMeters: 1200,
+  },
+  custom: {
+    ...DEFAULT_PROFILE,
+    mobilityProfile: "custom",
+  },
+};
+
 export const MODES: { value: RouteMode; label: string; hint: string }[] = [
   { value: "most_accessible", label: "Most accessible", hint: "Prioritize usability" },
   { value: "balanced", label: "Balanced", hint: "Usability + distance" },

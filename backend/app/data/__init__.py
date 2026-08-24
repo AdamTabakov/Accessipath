@@ -1,0 +1,1 @@
+"""Static institutional accessibility datasets."""

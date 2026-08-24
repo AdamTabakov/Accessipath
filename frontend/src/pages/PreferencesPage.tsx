@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import type { MobilityProfile } from "../types/index.js";
-import { PROFILE_LABELS } from "../utils/constants.js";
+import { PROFILE_LABELS, PROFILE_PRESETS } from "../utils/constants.js";
 import { useProfile } from "../hooks/useProfile.js";
 import { Button, Select, Toggle } from "../components/ui.js";
 import { SpotlightCard } from "../components/ui-kit/SpotlightCard.js";
@@ -22,6 +22,14 @@ export function PreferencesPage() {
     persistProfile();
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleProfileSelect = (mobilityProfile: MobilityProfile) => {
+    if (mobilityProfile === "custom") {
+      updateProfile({ mobilityProfile });
+      return;
+    }
+    updateProfile(PROFILE_PRESETS[mobilityProfile]);
   };
 
   return (
@@ -47,7 +55,7 @@ export function PreferencesPage() {
                 color="rgba(41,151,255,0.12)"
               >
                 <button
-                  onClick={() => updateProfile({ mobilityProfile: p })}
+                  onClick={() => handleProfileSelect(p)}
                   aria-pressed={selected}
                   className={`w-full rounded-card p-5 text-left transition-colors ${
                     selected

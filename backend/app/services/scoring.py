@@ -23,7 +23,7 @@ from ..utils.spatial import (
     resample_polyline,
 )
 
-EVIDENCE_RADIUS_M = 30
+EVIDENCE_RADIUS_M = 45
 COVERAGE_RADIUS_M = 60
 SAMPLE_INTERVAL_M = 60
 

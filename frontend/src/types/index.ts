@@ -116,6 +116,7 @@ export interface RouteResult {
   id: string;
   mode: RouteMode;
   provider: "osrm" | "demo";
+  aiSummary: string;
   distanceMeters: number;
   durationMinutes: number;
   accessibilityScore: number;

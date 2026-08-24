@@ -8,9 +8,11 @@ import { cn } from "../../utils/cn.js";
 export function MapBackground({
   className = "",
   opacity = "opacity-60",
+  animated = false,
 }: {
   className?: string;
   opacity?: string;
+  animated?: boolean;
 }) {
   return (
     <div
@@ -51,9 +53,6 @@ export function MapBackground({
             <stop offset="82%" stopColor="#0071e3" stopOpacity="0.9" />
             <stop offset="100%" stopColor="#0071e3" stopOpacity="0" />
           </linearGradient>
-          <filter id="ax-route-blur" x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="3" />
-          </filter>
         </defs>
 
         <rect width="1440" height="900" fill="#000000" />
@@ -86,21 +85,12 @@ export function MapBackground({
           stroke="url(#ax-route-fade)"
           strokeWidth="2.5"
           strokeLinecap="round"
-          className="ax-map-route"
-        />
-        <path
-          d="M 300 660 C 360 620, 400 560, 500 540 C 620 515, 640 430, 760 400 C 900 365, 1010 300, 1120 250"
-          fill="none"
-          stroke="rgba(41,151,255,0.35)"
-          strokeWidth="10"
-          strokeLinecap="round"
-          filter="url(#ax-route-blur)"
-          className="ax-map-route"
+          className={animated ? "ax-map-route" : undefined}
         />
 
         {/* Destination pin (B) */}
         <g transform="translate(1120,250)">
-          <circle r="26" fill="none" stroke="rgba(0,113,227,0.5)" strokeWidth="1.5" className="ax-map-ping" />
+          {animated && <circle r="26" fill="none" stroke="rgba(0,113,227,0.5)" strokeWidth="1.5" className="ax-map-ping" />}
           <circle r="13" fill="#0071e3" stroke="rgba(255,255,255,0.85)" strokeWidth="2" />
           <text y="4.5" textAnchor="middle" fontSize="13" fontWeight="700" fill="#ffffff" fontFamily="inherit">
             B
@@ -109,7 +99,7 @@ export function MapBackground({
 
         {/* Start pin (A) */}
         <g transform="translate(300,660)">
-          <circle r="26" fill="none" stroke="rgba(41,151,255,0.5)" strokeWidth="1.5" className="ax-map-ping" />
+          {animated && <circle r="26" fill="none" stroke="rgba(41,151,255,0.5)" strokeWidth="1.5" className="ax-map-ping" />}
           <circle r="13" fill="#2997ff" stroke="rgba(255,255,255,0.85)" strokeWidth="2" />
           <text y="4.5" textAnchor="middle" fontSize="13" fontWeight="700" fill="#ffffff" fontFamily="inherit">
             A

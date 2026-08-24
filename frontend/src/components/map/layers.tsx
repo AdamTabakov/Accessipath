@@ -118,7 +118,7 @@ export function UnknownSections({ coordinates }: { coordinates: Coordinates[] })
 export interface RouteLayerProps {
   routes: Array<{
     id: string;
-    geometry: Coordinates[];
+    positions: [number, number][];
     selected: boolean;
     isRecommended: boolean;
   }>;
@@ -129,14 +129,11 @@ export function RouteLayer({ routes, onSelect }: RouteLayerProps) {
   return (
     <>
       {routes.map((route) => {
-        const positions = route.geometry.map(
-          (c) => [c.latitude, c.longitude] as [number, number],
-        );
         if (route.selected) {
           return (
             <Fragment key={route.id}>
               <Polyline
-                positions={positions}
+                positions={route.positions}
                 pathOptions={{
                   color: "#0a0a0c",
                   weight: 10,
@@ -147,7 +144,7 @@ export function RouteLayer({ routes, onSelect }: RouteLayerProps) {
                 interactive={false}
               />
               <Polyline
-                positions={positions}
+                positions={route.positions}
                 pathOptions={{
                   color: "#2997ff",
                   weight: 5,
@@ -165,7 +162,7 @@ export function RouteLayer({ routes, onSelect }: RouteLayerProps) {
         return (
           <Polyline
             key={route.id}
-            positions={positions}
+            positions={route.positions}
             pathOptions={{
               color: "#8e8e93",
               weight: 3,

@@ -68,9 +68,6 @@ class _FakePool:
     def connection(self):
         return _ConnectionContext(self)
 
-    async def execute(self, sql, params=None):
-        return self._execute(sql, params)
-
     def _execute(self, sql, params=None):
         self.executions.append((sql, params))
         rows = self._responses.popleft() if self._responses else []
@@ -190,6 +187,43 @@ async def test_get_reports_maps_rows_and_passes_user_id_as_query_parameter():
     assert reports[0].latitude == 43.1
     assert reports[0].longitude == -79.2
     assert reports[0].myVote == "up"
+
+
+@pytest.mark.asyncio
+async def test_get_profile_uses_connection_from_pool_and_returns_default_profile():
+    store = PostgresStore("postgresql://example")
+    store.pool = _FakePool(responses=[[]])
+
+    profile = await store.get_profile()
+
+    sql, params = store.pool.executions[0]
+    assert sql == "SELECT profile_json FROM user_preferences WHERE id = 'default'"
+    assert params is None
+    assert profile.mobilityProfile == "wheelchair"
+    assert profile.avoidStairs is True
+
+
+@pytest.mark.asyncio
+async def test_get_profile_accepts_decoded_jsonb_dict():
+    store = PostgresStore("postgresql://example")
+    store.pool = _FakePool(responses=[[{"profile_json": {"mobilityProfile": "cane", "avoidStairs": False}}]])
+
+    profile = await store.get_profile()
+
+    assert profile.mobilityProfile == "cane"
+    assert profile.avoidStairs is False
+    assert profile.preferRamps is True
+
+
+@pytest.mark.asyncio
+async def test_get_profile_accepts_json_string():
+    store = PostgresStore("postgresql://example")
+    store.pool = _FakePool(responses=[[{"profile_json": json.dumps({"mobilityProfile": "walker"})}]])
+
+    profile = await store.get_profile()
+
+    assert profile.mobilityProfile == "walker"
+    assert profile.avoidStairs is True
 
 
 @pytest.mark.asyncio

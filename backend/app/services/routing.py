@@ -11,12 +11,13 @@ import httpx
 
 from ..config import settings
 from ..schemas import Coordinates, RouteCandidate
-from ..utils.spatial import haversine_distance, polyline_length_m
+from ..utils.spatial import haversine_distance, point_to_polyline_distance_m, polyline_length_m
 from ..utils.ttl_cache import TtlCache
 
 WALK_SPEED_MPS = 1.25
 MAX_CORRIDOR_WAYS = 8000
 MAX_DETOUR_ATTEMPTS = 24
+MAX_OSRM_DETOUR_ATTEMPTS = 4
 
 osrm_cache: TtlCache[str, list[RouteCandidate]] = TtlCache(ttl_ms=10 * 60_000)
 
@@ -93,6 +94,86 @@ async def fetch_osrm_routes(start: Coordinates, end: Coordinates) -> list[RouteC
         )
     osrm_cache.set(key, routes)
     return routes
+
+
+def _detour_points(start: Coordinates, end: Coordinates) -> list[Coordinates]:
+    mid_lat = (start.latitude + end.latitude) / 2
+    mid_lon = (start.longitude + end.longitude) / 2
+    d_lat = end.latitude - start.latitude
+    d_lon = end.longitude - start.longitude
+    length = math.sqrt(d_lat * d_lat + d_lon * d_lon)
+    if length == 0:
+        return []
+    perp_lat = -d_lon / length
+    perp_lon = d_lat / length
+    cos_lat = max(0.2, math.cos(math.radians(mid_lat)))
+    points: list[Coordinates] = []
+    for meters in (90, -90, 160, -160):
+        points.append(
+            Coordinates(
+                latitude=mid_lat + perp_lat * meters / 111000,
+                longitude=mid_lon + perp_lon * meters / (111000 * cos_lat),
+            )
+        )
+    return points
+
+
+def _is_distinct_route(candidate: RouteCandidate, existing: list[RouteCandidate]) -> bool:
+    for route in existing:
+        distance_delta = abs(candidate.distanceMeters - route.distanceMeters)
+        max_separation = max(
+            point_to_polyline_distance_m(point, route.geometry)
+            for point in candidate.geometry[1:-1] or candidate.geometry
+        )
+        if distance_delta < 15 and max_separation < 25:
+            return False
+    return True
+
+
+async def fetch_osrm_detour_routes(
+    start: Coordinates,
+    end: Coordinates,
+    existing: list[RouteCandidate],
+) -> list[RouteCandidate]:
+    candidates: list[RouteCandidate] = []
+    points = _detour_points(start, end)[:MAX_OSRM_DETOUR_ATTEMPTS]
+    if not points:
+        return []
+
+    async with httpx.AsyncClient(timeout=6.0) as client:
+        for index, via in enumerate(points):
+            url = (
+                f"{settings.osrm_url.rstrip('/')}/route/v1/foot/"
+                f"{start.longitude},{start.latitude};"
+                f"{via.longitude},{via.latitude};"
+                f"{end.longitude},{end.latitude}"
+                f"?alternatives=false&overview=full&geometries=geojson&steps=false"
+            )
+            try:
+                response = await client.get(url, headers={"User-Agent": USER_AGENT})
+                if response.status_code >= 300:
+                    continue
+                data = response.json()
+                routes = data.get("routes")
+                if data.get("code") != "Ok" or not isinstance(routes, list) or not routes:
+                    continue
+                item = routes[0]
+                geometry = decode_geojson_geometry((item.get("geometry") or {}).get("coordinates"))
+                if len(geometry) < 2:
+                    continue
+                distance = item.get("distance") or polyline_length_m(geometry)
+                candidate = to_candidate(
+                    f"detour_{index + 1}",
+                    "osrm",
+                    geometry,
+                    distance,
+                    distance / WALK_SPEED_MPS,
+                )
+                if _is_distinct_route(candidate, [*existing, *candidates]):
+                    candidates.append(candidate)
+            except Exception as error:  # noqa: BLE001
+                print(f"[routing] OSRM detour attempt failed: {error}")
+    return candidates
 
 
 @dataclass
@@ -351,13 +432,16 @@ async def get_candidate_routes(
 
     try:
         routes = await fetch_osrm_routes(start, end)
+        if len(routes) < 3:
+            detours = await fetch_osrm_detour_routes(start, end, routes)
+            routes = [*routes, *detours][:3]
         if len(routes) >= 2:
             return {"routes": routes, "provider": "osrm"}
         if len(routes) == 1:
             extras = [
                 {**d.model_dump(), "id": f"alt-{i + 1}"}
                 for i, d in enumerate(build_sidewalk())
-                if abs(d.distanceMeters - routes[0].distanceMeters) > 30
+                if _is_distinct_route(d, routes)
             ]
             extras = [RouteCandidate(**e) for e in extras[:2]]
             return {

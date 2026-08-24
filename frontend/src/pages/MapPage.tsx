@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, MapPin, Siren } from "lucide-react";
 import type { AccessibilityReport, Coordinates, Place, RecentRoute, RouteMode, RouteResult } from "../types/index.js";
 import { MODES, ENG, SLC } from "../utils/constants.js";
@@ -10,9 +10,12 @@ import { MapCanvas } from "../components/map/MapCanvas.js";
 import { RoutePlanner } from "../components/routing/RoutePlanner.js";
 import { RouteCard } from "../components/routing/RouteCard.js";
 import { RecentRoutes } from "../components/routing/RecentRoutes.js";
-import { ReportPanel } from "../components/report/ReportPanel.js";
 import { Button, Spinner } from "../components/ui.js";
 import { AnimatedTabs, ShimmerButton } from "../components/ui-kit/index.js";
+
+const ReportPanel = lazy(() =>
+  import("../components/report/ReportPanel.js").then((m) => ({ default: m.ReportPanel })),
+);
 
 const SLC_PLACE: Place = {
   id: "slc",
@@ -163,8 +166,23 @@ export function MapPage() {
     refresh();
   }, [refresh]);
 
-  const startMap = start ? { latitude: start.latitude, longitude: start.longitude, label: start.label } : null;
-  const endMap = end ? { latitude: end.latitude, longitude: end.longitude, label: end.label } : null;
+  const handlePickLocation = useCallback((c: Coordinates) => {
+    setPickedLocation(c);
+    setPickingLocation(false);
+  }, []);
+
+  const handleRequestPick = useCallback(() => setPickingLocation(true), []);
+  const handleCancelPick = useCallback(() => setPickingLocation(false), []);
+  const handleCloseReport = useCallback(() => setReportOpen(false), []);
+
+  const startMap = useMemo(
+    () => start ? { latitude: start.latitude, longitude: start.longitude, label: start.label } : null,
+    [start],
+  );
+  const endMap = useMemo(
+    () => end ? { latitude: end.latitude, longitude: end.longitude, label: end.label } : null,
+    [end],
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
@@ -292,10 +310,7 @@ export function MapPage() {
             focusReport={focusReport}
             pickingLocation={pickingLocation}
             pickedLocation={pickedLocation}
-            onPickLocation={(c) => {
-              setPickedLocation(c);
-              setPickingLocation(false);
-            }}
+            onPickLocation={handlePickLocation}
           />
 
           {!reportOpen && (
@@ -313,14 +328,16 @@ export function MapPage() {
 
           {reportOpen && (
             <div className="absolute inset-y-0 right-0 z-[1100] w-full max-w-md overflow-y-auto border-l border-graphite bg-true-black/60 p-3 sm:p-4">
-              <ReportPanel
-                pickedLocation={pickedLocation}
-                pickingLocation={pickingLocation}
-                onRequestPick={() => setPickingLocation(true)}
-                onCancelPick={() => setPickingLocation(false)}
-                onSubmitted={handleReportSubmitted}
-                onClose={() => setReportOpen(false)}
-              />
+              <Suspense fallback={<Spinner label="Loading report form..." />}>
+                <ReportPanel
+                  pickedLocation={pickedLocation}
+                  pickingLocation={pickingLocation}
+                  onRequestPick={handleRequestPick}
+                  onCancelPick={handleCancelPick}
+                  onSubmitted={handleReportSubmitted}
+                  onClose={handleCloseReport}
+                />
+              </Suspense>
             </div>
           )}
 

@@ -71,6 +71,10 @@ export function RouteCard({ route, rank, selected, recommended, onSelect }: Rout
         <div className="mt-4">
           <RouteFactorsRow route={route} />
         </div>
+
+        <p className="mt-4 rounded-card-sm border border-graphite bg-true-black/40 px-4 py-3 text-sm leading-relaxed text-platinum">
+          {route.aiSummary}
+        </p>
       </article>
 
       <div onClick={(e) => e.stopPropagation()}>

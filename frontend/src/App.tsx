@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { SkipLink } from "./components/navigation/SkipLink.js";
 import { Header } from "./components/navigation/Header.js";
 import { Footer } from "./components/navigation/Footer.js";
+import { NotificationViewport } from "./components/notifications/Notifications.js";
 import { Spinner } from "./components/ui.js";
 import { AuthProvider } from "./hooks/useAuth.js";
 import { ProfileProvider } from "./hooks/useProfile.js";
@@ -80,6 +81,7 @@ export default function App() {
               </Suspense>
             </main>
             <Footer />
+            <NotificationViewport />
           </div>
         </BrowserRouter>
       </ProfileProvider>

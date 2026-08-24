@@ -41,7 +41,7 @@ export function AboutPage() {
   return (
     <div>
       <section className="relative overflow-hidden bg-true-black">
-        <MapBackground opacity="opacity-40" />
+        <MapBackground opacity="opacity-40" animated />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-true-black" />
         <div className="relative mx-auto max-w-4xl px-4 py-16 sm:px-6 md:py-24">
           <h1 className="font-display text-4xl font-semibold tracking-tight text-silk md:text-6xl">
@@ -125,7 +125,7 @@ export function AboutPage() {
 
         <div className="mt-12">
           <ShimmerLink to="/map" className="px-8 py-4 text-lg">
-            Try it now — SLC to ENG
+            Open route planner
             <ArrowRight className="h-5 w-5" aria-hidden="true" />
           </ShimmerLink>
         </div>
