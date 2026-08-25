@@ -194,6 +194,7 @@ Steps:
 - **Upload safety.** Report photos are validated as data URLs — magic bytes + image dimensions via a pure-Python parser (no Pillow); rejected otherwise; stored under `uploads/` (gitignored).
 - **Rate limiting** on public/expensive endpoints (geocoding, reports, routing, auth).
 - **Hardened defaults**: security headers middleware, CORS allowlist, sanitized error messages (no stack traces to clients), no credential logging.
+- **Database isolation**: PostgreSQL row-level security is enabled for account-owned votes, profiles, and recent routes; plain PostgreSQL request contexts use the `app.user_id` setting (Supabase's `auth.uid()` is not assumed).
 - **Treat external data as untrusted.** OSM/Nominatim/OSRM responses are validated; accessibility information is never fabricated and unknown data stays unknown.
 - See `AGENTS.md` for the full security and accessibility checklist.
 

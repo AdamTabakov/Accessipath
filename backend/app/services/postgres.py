@@ -29,6 +29,59 @@ from .store import (
     report_to_accessibility_point,
 )
 
+
+# Helper functions (module level, like the original file)
+def _point_geog(lon: float, lat: float) -> str:
+    return f"SRID=4326;POINT({lon} {lat})"
+
+
+def _iso(value) -> str:
+    if value is None:
+        return datetime.now(timezone.utc).isoformat()
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.isoformat()
+    return str(value)
+
+
+def _iso_opt(value) -> str | None:
+    return _iso(value) if value is not None else None
+
+
+def _num(value) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _float(value) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _json_dumps_model(value: Any) -> str:
+    if hasattr(value, "model_dump"):
+        value = value.model_dump()
+    if isinstance(value, list):
+        value = [item.model_dump() if hasattr(item, "model_dump") else item for item in value]
+    return json.dumps(value)
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str | bytes | bytearray):
+        loaded = json.loads(value)
+        return loaded if isinstance(loaded, dict) else {}
+    return {}
+
+
+# --- SCHEMA (CREATE TABLE statements only) ---
+
 SCHEMA = """
 CREATE EXTENSION IF NOT EXISTS postgis;
 
@@ -115,74 +168,67 @@ CREATE TABLE IF NOT EXISTS recent_routes (
 CREATE INDEX IF NOT EXISTS recent_routes_user_idx ON recent_routes (user_id, created_at DESC);
 """
 
+# --- Row Level Security Policies (executed after schema initialization) ---
+
+RLS_POLICIES = """
+-- ===== Row Level Security Policies =====
+-- The API uses plain PostgreSQL rather than Supabase, so a provider-specific
+-- authentication helper is not available. Authenticated request handlers may
+-- set app.user_id on their transaction when using a non-owner database role.
+
+ALTER TABLE route_reports ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "reports_viewable_by_authenticated" ON route_reports;
+DROP POLICY IF EXISTS "reports_public_read" ON route_reports;
+DROP POLICY IF EXISTS "reports_public_insert" ON route_reports;
+CREATE POLICY "reports_public_read" ON route_reports
+  FOR SELECT USING (true);
+CREATE POLICY "reports_public_insert" ON route_reports
+  FOR INSERT WITH CHECK (true);
+
+ALTER TABLE report_votes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "votes_own_vote" ON report_votes;
+CREATE POLICY "votes_own_vote" ON report_votes
+  USING (user_id = NULLIF(current_setting('app.user_id', true), ''))
+  WITH CHECK (user_id = NULLIF(current_setting('app.user_id', true), ''));
+
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "users_own_profile" ON users;
+DROP POLICY IF EXISTS "users_signup" ON users;
+CREATE POLICY "users_own_profile" ON users
+  USING (id = NULLIF(current_setting('app.user_id', true), ''))
+  WITH CHECK (id = NULLIF(current_setting('app.user_id', true), ''));
+-- Account creation is performed by the server before a session exists.
+CREATE POLICY "users_signup" ON users
+  FOR INSERT WITH CHECK (true);
+
+ALTER TABLE ai_observations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "ai_obs_own_observations" ON ai_observations;
+DROP POLICY IF EXISTS "ai_obs_insert" ON ai_observations;
+CREATE POLICY "ai_obs_insert" ON ai_observations
+  FOR INSERT WITH CHECK (true);
+
+ALTER TABLE osm_features ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "osm_features_public_view" ON osm_features;
+CREATE POLICY "osm_features_public_view" ON osm_features
+  FOR SELECT USING (true);
+
+ALTER TABLE recent_routes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "recent_routes_own_data" ON recent_routes;
+CREATE POLICY "recent_routes_own_data" ON recent_routes
+  USING (user_id = NULLIF(current_setting('app.user_id', true), ''))
+  WITH CHECK (user_id = NULLIF(current_setting('app.user_id', true), ''));
+
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "default_preferences_access" ON user_preferences;
+CREATE POLICY "default_preferences_access" ON user_preferences
+  USING (id = 'default')
+  WITH CHECK (id = 'default');
+
+-- ===== End RLS Policies =====
+"""
+
+
 REPORT_LIFETIME = timedelta(days=90)
-
-
-def _point_geog(lon: float, lat: float) -> str:
-    return f"SRID=4326;POINT({lon} {lat})"
-
-
-def _iso(value) -> str:
-    if value is None:
-        return datetime.now(timezone.utc).isoformat()
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.isoformat()
-    return str(value)
-
-
-def _iso_opt(value) -> str | None:
-    return _iso(value) if value is not None else None
-
-
-def _num(value) -> int:
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _float(value) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _json_dumps_model(value: Any) -> str:
-    if hasattr(value, "model_dump"):
-        value = value.model_dump()
-    if isinstance(value, list):
-        value = [item.model_dump() if hasattr(item, "model_dump") else item for item in value]
-    return json.dumps(value)
-
-
-def _json_object(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    if isinstance(value, str | bytes | bytearray):
-        loaded = json.loads(value)
-        return loaded if isinstance(loaded, dict) else {}
-    return {}
-
-
-def _row_to_report(row: dict) -> AccessibilityReport:
-    return AccessibilityReport(
-        id=row["id"],
-        type=row["report_type"],
-        description=row["description"],
-        latitude=_float(row.get("lat")),
-        longitude=_float(row.get("lon")),
-        status=row["status"],
-        upvotes=_num(row.get("upvotes")),
-        downvotes=_num(row.get("downvotes")),
-        myVote=row.get("my_vote") or None,
-        verifiedAt=_iso_opt(row.get("verified_at")),
-        photoUrl=row.get("photo_url"),
-        createdAt=_iso(row.get("created_at")),
-        expiresAt=_iso(row.get("expires_at") or datetime.now(timezone.utc)),
-    )
 
 
 class PostgresStore:
@@ -209,6 +255,7 @@ class PostgresStore:
         async with self.pool.connection() as conn:
             async with conn.transaction():
                 await conn.execute(SCHEMA)
+                await conn.execute(RLS_POLICIES)
         await self.invalidate_accessibility_points()
 
     async def close(self) -> None:
@@ -220,6 +267,12 @@ class PostgresStore:
         if self.pool is None:
             raise RuntimeError("PostgresStore not initialized.")
         return self.pool
+
+    async def _set_user_context(self, conn, user_id: str | None) -> None:
+        await conn.execute(
+            "SELECT set_config('app.user_id', %s, true)",
+            (user_id or "",),
+        )
 
     async def _execute(self, sql: str, params: tuple[Any, ...] | None = None) -> None:
         async with self._pool().connection() as conn:
@@ -257,18 +310,22 @@ class PostgresStore:
     async def invalidate_accessibility_points(self) -> None:
         self.points_cache = None
 
+    # Keep existing methods from original file...
     async def get_reports(self, user_id: str | None = None) -> list[AccessibilityReport]:
-        rows = await self._fetchall(
-            "SELECT r.id, r.report_type, r.description, r.status, r.upvotes, r.downvotes, "
-            "r.verified_at, r.photo_url, r.created_at, r.expires_at, v.direction AS my_vote, "
-            "ST_Y(r.geometry::geometry) AS lat, ST_X(r.geometry::geometry) AS lon "
-            "FROM route_reports r "
-            "LEFT JOIN LATERAL ("
-            "  SELECT direction FROM report_votes WHERE report_id = r.id AND user_id = %s"
-            ") v ON true "
-            "ORDER BY r.created_at DESC",
-            (user_id,),
-        )
+        async with self._pool().connection() as conn:
+            await self._set_user_context(conn, user_id)
+            cursor = await conn.execute(
+                "SELECT r.id, r.report_type, r.description, r.status, r.upvotes, r.downvotes, "
+                "r.verified_at, r.photo_url, r.created_at, r.expires_at, v.direction AS my_vote, "
+                "ST_Y(r.geometry::geometry) AS lat, ST_X(r.geometry::geometry) AS lon "
+                "FROM route_reports r "
+                "LEFT JOIN LATERAL ("
+                "  SELECT direction FROM report_votes WHERE report_id = r.id AND user_id = %s"
+                ") v ON true "
+                "ORDER BY r.created_at DESC",
+                (user_id,),
+            )
+            rows = await cursor.fetchall()
         reports = [_row_to_report(row) for row in rows]
         for report in reports:
             report.status = effective_report_status(report)
@@ -331,6 +388,7 @@ class PostgresStore:
         pool = self._pool()
         async with pool.connection() as conn:
             async with conn.transaction():
+                await self._set_user_context(conn, user_id)
                 existing = await conn.execute(
                     "SELECT direction FROM report_votes WHERE report_id = %s AND user_id = %s",
                     (id, user_id),
@@ -391,11 +449,17 @@ class PostgresStore:
         return observation
 
     async def get_profile(self, user_id: str | None = None) -> ProfilePreferences:
-        if user_id:
-            row = await self._fetchone("SELECT profile_json FROM users WHERE id = %s", (user_id,))
-            if row and row.get("profile_json"):
-                return ProfilePreferences(**{**DEFAULT_PROFILE.model_dump(), **_json_object(row["profile_json"])})
-        row = await self._fetchone("SELECT profile_json FROM user_preferences WHERE id = 'default'")
+        async with self._pool().connection() as conn:
+            await self._set_user_context(conn, user_id)
+            if user_id:
+                cursor = await conn.execute("SELECT profile_json FROM users WHERE id = %s", (user_id,))
+                row = await cursor.fetchone()
+                if row and row.get("profile_json"):
+                    return ProfilePreferences(
+                        **{**DEFAULT_PROFILE.model_dump(), **_json_object(row["profile_json"])}
+                    )
+            cursor = await conn.execute("SELECT profile_json FROM user_preferences WHERE id = 'default'")
+            row = await cursor.fetchone()
         if not row:
             return DEFAULT_PROFILE.model_copy(deep=True)
         return ProfilePreferences(**{**DEFAULT_PROFILE.model_dump(), **_json_object(row["profile_json"])})
@@ -404,14 +468,16 @@ class PostgresStore:
         self, profile: ProfilePreferences, user_id: str | None = None
     ) -> ProfilePreferences:
         data = json.dumps(profile.model_dump())
-        if user_id:
-            await self._execute("UPDATE users SET profile_json = %s WHERE id = %s", (data, user_id))
-        else:
-            await self._execute(
-                "INSERT INTO user_preferences (id, profile_json) VALUES ('default', %s) "
-                "ON CONFLICT (id) DO UPDATE SET profile_json = %s, updated_at = now()",
-                (data, data),
-            )
+        async with self._pool().connection() as conn:
+            await self._set_user_context(conn, user_id)
+            if user_id:
+                await conn.execute("UPDATE users SET profile_json = %s WHERE id = %s", (data, user_id))
+            else:
+                await conn.execute(
+                    "INSERT INTO user_preferences (id, profile_json) VALUES ('default', %s) "
+                    "ON CONFLICT (id) DO UPDATE SET profile_json = %s, updated_at = now()",
+                    (data, data),
+                )
         return profile.model_copy(deep=True)
 
     async def find_user_by_email(self, email: str) -> User | None:
@@ -423,11 +489,14 @@ class PostgresStore:
         return self._row_to_user(row) if row else None
 
     async def get_user_by_id(self, id: str) -> User | None:
-        row = await self._fetchone(
-            "SELECT id, email, name, password_hash, verified_at, verification_code_hash, "
-            "verification_expires_at, created_at FROM users WHERE id = %s",
-            (id,),
-        )
+        async with self._pool().connection() as conn:
+            await self._set_user_context(conn, id)
+            cursor = await conn.execute(
+                "SELECT id, email, name, password_hash, verified_at, verification_code_hash, "
+                "verification_expires_at, created_at FROM users WHERE id = %s",
+                (id,),
+            )
+            row = await cursor.fetchone()
         return self._row_to_user(row) if row else None
 
     async def create_user(self, input_: dict[str, Any]) -> User:
@@ -450,30 +519,35 @@ class PostgresStore:
         return user
 
     async def update_user(self, id: str, patch: dict[str, Any]) -> User:
-        await self._execute(
-            "UPDATE users "
-            "SET verified_at = COALESCE(%s, verified_at), "
-            "verification_code_hash = %s, "
-            "verification_expires_at = %s "
-            "WHERE id = %s",
-            (
-                patch.get("verifiedAt"),
-                patch.get("verificationCodeHash"),
-                patch.get("verificationExpiresAt"),
-                id,
-            ),
-        )
+        async with self._pool().connection() as conn:
+            await self._set_user_context(conn, id)
+            await conn.execute(
+                "UPDATE users "
+                "SET verified_at = COALESCE(%s, verified_at), "
+                "verification_code_hash = %s, "
+                "verification_expires_at = %s "
+                "WHERE id = %s",
+                (
+                    patch.get("verifiedAt"),
+                    patch.get("verificationCodeHash"),
+                    patch.get("verificationExpiresAt"),
+                    id,
+                ),
+            )
         user = await self.get_user_by_id(id)
         if not user:
             raise RuntimeError("User not found.")
         return user
 
     async def get_recent_routes(self, user_id: str) -> list[RecentRoute]:
-        rows = await self._fetchall(
-            "SELECT id, start_label, start_lat, start_lon, end_label, end_lat, end_lon, mode, created_at "
-            "FROM recent_routes WHERE user_id = %s ORDER BY created_at DESC LIMIT 10",
-            (user_id,),
-        )
+        async with self._pool().connection() as conn:
+            await self._set_user_context(conn, user_id)
+            cursor = await conn.execute(
+                "SELECT id, start_label, start_lat, start_lon, end_label, end_lat, end_lon, mode, created_at "
+                "FROM recent_routes WHERE user_id = %s ORDER BY created_at DESC LIMIT 10",
+                (user_id,),
+            )
+            rows = await cursor.fetchall()
         return [
             RecentRoute(
                 id=row["id"],
@@ -490,41 +564,44 @@ class PostgresStore:
         ]
 
     async def add_recent_route(self, user_id: str, input_: dict[str, Any]) -> RecentRoute:
-        await self._execute(
-            "DELETE FROM recent_routes "
-            "WHERE user_id = %s AND start_lat = %s AND start_lon = %s AND end_lat = %s AND end_lon = %s",
-            (
-                user_id,
-                input_["startLatitude"],
-                input_["startLongitude"],
-                input_["endLatitude"],
-                input_["endLongitude"],
-            ),
-        )
         route_id = str(uuid.uuid4())
-        await self._execute(
-            "INSERT INTO recent_routes "
-            "(id, user_id, start_label, start_lat, start_lon, end_label, end_lat, end_lon, mode) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (
-                route_id,
-                user_id,
-                input_["startLabel"],
-                input_["startLatitude"],
-                input_["startLongitude"],
-                input_["endLabel"],
-                input_["endLatitude"],
-                input_["endLongitude"],
-                input_["mode"],
-            ),
-        )
-        await self._execute(
-            "DELETE FROM recent_routes "
-            "WHERE user_id = %s AND id NOT IN ("
-            "  SELECT id FROM recent_routes WHERE user_id = %s ORDER BY created_at DESC LIMIT 10"
-            ")",
-            (user_id, user_id),
-        )
+        async with self._pool().connection() as conn:
+            async with conn.transaction():
+                await self._set_user_context(conn, user_id)
+                await conn.execute(
+                    "DELETE FROM recent_routes "
+                    "WHERE user_id = %s AND start_lat = %s AND start_lon = %s AND end_lat = %s AND end_lon = %s",
+                    (
+                        user_id,
+                        input_["startLatitude"],
+                        input_["startLongitude"],
+                        input_["endLatitude"],
+                        input_["endLongitude"],
+                    ),
+                )
+                await conn.execute(
+                    "INSERT INTO recent_routes "
+                    "(id, user_id, start_label, start_lat, start_lon, end_label, end_lat, end_lon, mode) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        route_id,
+                        user_id,
+                        input_["startLabel"],
+                        input_["startLatitude"],
+                        input_["startLongitude"],
+                        input_["endLabel"],
+                        input_["endLatitude"],
+                        input_["endLongitude"],
+                        input_["mode"],
+                    ),
+                )
+                await conn.execute(
+                    "DELETE FROM recent_routes "
+                    "WHERE user_id = %s AND id NOT IN ("
+                    "  SELECT id FROM recent_routes WHERE user_id = %s ORDER BY created_at DESC LIMIT 10"
+                    ")",
+                    (user_id, user_id),
+                )
         saved = await self.get_recent_routes(user_id)
         if not saved:
             raise RuntimeError("Failed to save recent route.")
@@ -541,4 +618,23 @@ class PostgresStore:
             verificationCodeHash=row.get("verification_code_hash"),
             verificationExpiresAt=_iso_opt(row.get("verification_expires_at")),
             createdAt=_iso(row.get("created_at")),
-        )
+    )
+
+
+def _row_to_report(row: dict) -> AccessibilityReport:
+    return AccessibilityReport(
+        id=row["id"],
+        type=row["report_type"],
+        description=row["description"],
+        latitude=_float(row.get("lat")),
+        longitude=_float(row.get("lon")),
+        status=row["status"],
+        upvotes=_num(row.get("upvotes")),
+        downvotes=_num(row.get("downvotes")),
+        myVote=row.get("my_vote") or None,
+        verifiedAt=_iso_opt(row.get("verified_at")),
+        photoUrl=row.get("photo_url"),
+        createdAt=_iso(row.get("created_at")),
+        expiresAt=_iso(row.get("expires_at")),
+        aiObservation=None,
+    )

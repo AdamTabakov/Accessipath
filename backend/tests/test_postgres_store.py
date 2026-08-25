@@ -6,7 +6,7 @@ import pytest
 
 from app.schemas import AiObservation
 from app.services import postgres as postgres_module
-from app.services.postgres import SCHEMA, PostgresStore
+from app.services.postgres import SCHEMA, RLS_POLICIES, PostgresStore
 
 
 class _Cursor:
@@ -85,6 +85,14 @@ def test_schema_creates_referenced_tables_before_foreign_key_tables():
     assert "user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE" in SCHEMA
 
 
+def test_rls_policies_are_plain_postgres_and_rerunnable():
+    assert "auth.uid()" not in RLS_POLICIES
+    assert "ALTER TABLE report_votes ENABLE ROW LEVEL SECURITY" in RLS_POLICIES
+    assert "DROP POLICY IF EXISTS" in RLS_POLICIES
+    assert "current_setting('app.user_id', true)" in RLS_POLICIES
+    assert "CREATE POLICY \"recent_routes_own_data\"" in RLS_POLICIES
+
+
 @pytest.mark.asyncio
 async def test_initialize_opens_async_pool_and_executes_schema(monkeypatch):
     created_pools = []
@@ -108,7 +116,7 @@ async def test_initialize_opens_async_pool_and_executes_schema(monkeypatch):
     assert pool.kwargs["open"] is False
     assert pool.opened is True
     assert pool.closed is True
-    assert pool.executions == [(SCHEMA, None)]
+    assert pool.executions == [(SCHEMA, None), (RLS_POLICIES, None)]
 
 
 @pytest.mark.asyncio
@@ -174,11 +182,14 @@ async def test_get_reports_maps_rows_and_passes_user_id_as_query_parameter():
         }
     ]
     store = PostgresStore("postgresql://example")
-    store.pool = _FakePool(responses=[rows])
+    store.pool = _FakePool(responses=[[], rows])
 
     reports = await store.get_reports("user-1")
 
-    sql, params = store.pool.executions[0]
+    set_ctx_sql, set_ctx_params = store.pool.executions[0]
+    sql, params = store.pool.executions[1]
+    assert "set_config('app.user_id'" in set_ctx_sql
+    assert set_ctx_params == ("user-1",)
     assert "LEFT JOIN LATERAL" in sql
     assert "user_id = %s" in sql
     assert params == ("user-1",)
@@ -192,11 +203,14 @@ async def test_get_reports_maps_rows_and_passes_user_id_as_query_parameter():
 @pytest.mark.asyncio
 async def test_get_profile_uses_connection_from_pool_and_returns_default_profile():
     store = PostgresStore("postgresql://example")
-    store.pool = _FakePool(responses=[[]])
+    store.pool = _FakePool(responses=[[], []])
 
     profile = await store.get_profile()
 
-    sql, params = store.pool.executions[0]
+    set_ctx_sql, set_ctx_params = store.pool.executions[0]
+    sql, params = store.pool.executions[1]
+    assert "set_config('app.user_id'" in set_ctx_sql
+    assert set_ctx_params == ("",)
     assert sql == "SELECT profile_json FROM user_preferences WHERE id = 'default'"
     assert params is None
     assert profile.mobilityProfile == "wheelchair"
@@ -206,7 +220,7 @@ async def test_get_profile_uses_connection_from_pool_and_returns_default_profile
 @pytest.mark.asyncio
 async def test_get_profile_accepts_decoded_jsonb_dict():
     store = PostgresStore("postgresql://example")
-    store.pool = _FakePool(responses=[[{"profile_json": {"mobilityProfile": "cane", "avoidStairs": False}}]])
+    store.pool = _FakePool(responses=[[], [{"profile_json": {"mobilityProfile": "cane", "avoidStairs": False}}]])
 
     profile = await store.get_profile()
 
@@ -218,7 +232,7 @@ async def test_get_profile_accepts_decoded_jsonb_dict():
 @pytest.mark.asyncio
 async def test_get_profile_accepts_json_string():
     store = PostgresStore("postgresql://example")
-    store.pool = _FakePool(responses=[[{"profile_json": json.dumps({"mobilityProfile": "walker"})}]])
+    store.pool = _FakePool(responses=[[], [{"profile_json": json.dumps({"mobilityProfile": "walker"})}]])
 
     profile = await store.get_profile()
 
@@ -240,7 +254,7 @@ async def test_create_user_lowercases_email_and_fetches_created_user():
         "created_at": now,
     }
     store = PostgresStore("postgresql://example")
-    store.pool = _FakePool(responses=[[], [created_row]])
+    store.pool = _FakePool(responses=[[], [], [created_row]])
 
     user = await store.create_user(
         {
@@ -255,10 +269,13 @@ async def test_create_user_lowercases_email_and_fetches_created_user():
     )
 
     insert_sql, insert_params = store.pool.executions[0]
-    select_sql, select_params = store.pool.executions[1]
+    set_ctx_sql, set_ctx_params = store.pool.executions[1]
+    select_sql, select_params = store.pool.executions[2]
     assert "INSERT INTO users" in insert_sql
     assert insert_params[1] == "person@example.com"
     assert "Person@Example.COM" not in insert_sql
     assert "SELECT id, email, name, password_hash" in select_sql
     assert select_params == ("user-1",)
     assert user.email == "person@example.com"
+    assert "set_config('app.user_id'" in set_ctx_sql
+    assert set_ctx_params == ("user-1",)

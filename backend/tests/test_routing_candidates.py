@@ -65,13 +65,14 @@ def test_profile_from_defaults_uses_selected_mobility_profile_presets():
     assert limited.maxWalkDistanceMeters == 1200
 
 
-def test_institutional_points_include_tmu_slc_to_eng_accessible_entrances():
+def test_institutional_points_near_route():
     start = Coordinates(latitude=43.6577, longitude=-79.3802)
     end = Coordinates(latitude=43.658112, longitude=-79.377632)
 
     points = institutional_points_near(start, end)
     names = {point.buildingName for point in points}
 
-    assert "Student Learning Centre (SLC) - 341 Yonge St." in names
-    assert "George Vari Engineering and Computing Centre (ENG) - North Church/Gould" in names
+    # Toronto city data - replace TMU-specific entrances with city-wide data
+    assert any("Community Centre" in name for name in names)
+    assert any("Library" in name for name in names)
     assert all(point.sourceType == "institutional" for point in points)
