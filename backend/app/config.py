@@ -1,14 +1,18 @@
 """Application configuration.
 
 Environment variables are read via pydantic-settings. Names intentionally
-mirror the original Node/Dotenv configuration so existing .env files keep
+mirror the original Node/Dotnet configuration so existing .env files keep
 working: PORT, NODE_ENV, DATABASE_URL, CORS_ORIGINS, OSRM_URL,
 NOMINATIM_URL, OVERPASS_URL, UPLOAD_DIR, APP_URL, JWT_SECRET,
 JWT_EXPIRES_IN, VERIFICATION_CODE_TTL_MINUTES, RESEND_API_KEY, RESEND_FROM.
 """
 
+import os
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Dev-only fallback; must be set via JWT_SECRET env var in production.
 DEV_JWT_SECRET = "accessipath-dev-secret-change-in-prod"
 
 
@@ -32,11 +36,20 @@ class Settings(BaseSettings):
     body_limit: str = "12mb"
 
     app_url: str = "http://localhost:5173"
-    jwt_secret: str = DEV_JWT_SECRET
+    jwt_secret: str = os.getenv("JWT_SECRET", DEV_JWT_SECRET)
     jwt_expires_in: str = "7d"
     verification_code_ttl_minutes: int = 15
     resend_api_key: str = ""
     resend_from: str = "AccessiPath <onboarding@resend.dev>"
+
+    @model_validator(mode="after")
+    def _require_prod_secrets(self) -> "Settings":
+        if self.is_prod:
+            if not self.jwt_secret or self.jwt_secret == DEV_JWT_SECRET:
+                raise ValueError("JWT_SECRET must be set to a secret value in production")
+            if not self.cors_origins.strip():
+                raise ValueError("CORS_ORIGINS must be set in production")
+        return self
 
     @property
     def is_prod(self) -> bool:
