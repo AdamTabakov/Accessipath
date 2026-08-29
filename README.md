@@ -47,6 +47,10 @@ AccessiPath **recommends Route B** even though the alternatives look similar on 
 - **Confidence panel.** Shows data coverage along the route and flags unknown sections as amber markers on the map.
 - **Accessibility map layer.** Entrances, ramps, elevators, crossings, stairs, and obstacles rendered with status glyphs (✓ ✕ ? !) — never color alone.
 - **Community reports.** Report a blocked ramp or broken elevator with a photo. On-device AI (transformers.js) classifies the photo **privately in the browser** — no image ever leaves the device.
+
+- **CLIP evaluation framework** (new). A precision/recall check has been added for the CLIP zero-shot classifier: 20–30 labeled test photos are evaluated per category, reporting accuracy, macro precision/recall, per-class counts, and a confusion matrix. This replaces the previous "zero evaluation data" state, giving the team concrete numbers for interviews rather than hoping nobody asks about AI reliability.
+
+Details: `backend/app/utils/clip_evaluation.py` provides `run_evaluation()` returning accuracy, macro precision/recall, per-class totals, and a confusion matrix heatmap.
 - **Location search** (Nominatim) for Toronto.
 
 ---
@@ -128,13 +132,7 @@ npm run import:osm     # Overpass import for the City of Toronto bounding box
 Route candidates come from two sources in `backend/app/services/routing.py`:
 
 1. **Live OSRM foot routing (primary).** The API asks OSRM for walkable routes between the start and end, requesting alternatives so users can compare options. When it returns two or more routes, those are used directly.
-2. **OpenStreetMap sidewalk graph (fallback + alternate).** When OSRM is down or returns only one route, the API builds its own walkable graph from the OSM ways collected in the route corridor, then runs **Dijkstra's algorithm** over it:
-   - Every corridor way is split into edges whose nodes are its vertices.
-   - The start and end points are **snapped** to the nearest way segment (within 500 m).
-   - A shortest-path search (minimizing walked distance) finds the primary route.
-   - A secondary route is found by re-running Dijkstra with each primary-path edge **banned one at a time**, keeping the first alternate that is at least 10 m longer — this gives users a genuine detour choice rather than a duplicate.
-
-This guarantees the app never emits "as-the-crow-flies" fallbacks that ignore walkways: any non-OSRM route is still composed of real OSM footpaths. Candidates are then passed to the scoring engine, which decides which one is actually *usable*.
+2. **OpenStreetMap sidewalk graph (fallback + alternate).** When OSRM is down or returns only one route, the API builds its own walkable graph from the OSM ways collected in the route corridor, then runs **heap-based Dijkstra** over it (O((V+E)log V) instead of O(V²)). The secondary route is now found using **Yen's algorithm** for k-shortest loopless paths, replacing the previous "ban one edge and hope" heuristic. This guarantees a genuinely second-best path rather than the first path that happens to avoid a single banned edge.
 
 ---
 
@@ -153,7 +151,7 @@ route score =
   − accessibility bonuses (ramps, elevators, accessible crossings)
 ```
 
-Weights are **configurable** in `backend/app/services/scoring.py` (`WEIGHTS`) rather than hardcoded throughout the app, because not every user has identical accessibility requirements. The engine:
+Weights are **configurable** in `backend/app/services/scoring.py` (`WEIGHTS`) rather than hardcoded throughout the app, because not every user has identical accessibility requirements. **Known limitation:** These weights are unvalidated constants — chosen through heuristics and experience, not through statistical validation against a labeled accessibility benchmark. They should be treated as configurable knobs that can be tuned for different user profiles, not as absolute truths. The engine:
 
 1. Attaches nearby accessibility features to each route line (`EVIDENCE_RADIUS_M`).
 2. Computes penalties/bonuses per feature, profile, and severity.

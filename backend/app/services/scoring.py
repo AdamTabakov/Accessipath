@@ -36,6 +36,9 @@ WEIGHTS = {
         "custom": 18,
     },
     "steepSlope": 14,
+    # TODO: These weights are unvalidated constants chosen through heuristics,
+    # not through statistical validation against a labeled accessibility benchmark.
+    # Treat as configurable knobs, not absolute truths. See DESIGN.md for discussion.
     "roughSurface": 10,
     "obstacle": 22,
     "unknownSegment": 6,

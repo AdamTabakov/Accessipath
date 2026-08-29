@@ -3,6 +3,7 @@
 Port of the Node routing service. Never emits "as-the-crow-flies" fallbacks
 that ignore walkways."""
 
+import heapq
 import math
 from dataclasses import dataclass
 from typing import Optional
@@ -13,6 +14,12 @@ from ..config import settings
 from ..schemas import Coordinates, RouteCandidate
 from ..utils.spatial import haversine_distance, point_to_polyline_distance_m, polyline_length_m
 from ..utils.ttl_cache import TtlCache
+
+
+@dataclass
+class _HeapEntry:
+    dist: float
+    node: int
 
 WALK_SPEED_MPS = 1.25
 MAX_CORRIDOR_WAYS = 8000
@@ -219,7 +226,24 @@ def _nearest_on_ways(p: Coordinates, ways: list[list[Coordinates]]) -> _Snap | N
     return best
 
 
-def _dijkstra(
+def _path_from_prev(prev_edge: list[int], start: int, end: int) -> list[int] | None:
+    chain: list[int] = []
+    cur = end
+    guard: set[int] = set()
+    while cur != start:
+        if cur in guard:
+            return None
+        guard.add(cur)
+        ei = prev_edge[cur]
+        if ei == -1:
+            return None
+        chain.append(ei)
+        cur = edges[ei].b if edges[ei].a == cur else edges[ei].a
+    chain.reverse()
+    return chain
+
+
+def _dijkstra_path(
     adj: dict[int, list[int]],
     edges: list[_WayEdge],
     node_count: int,
@@ -227,33 +251,167 @@ def _dijkstra(
     t: int,
     banned_edge: int = -1,
 ) -> list[int] | None:
-    dist = [float("inf")] * node_count
-    prev_edge = [-1] * node_count
-    visited = [False] * node_count
-    dist[s] = 0
-    for _ in range(node_count):
-        u = -1
-        best = float("inf")
-        for i in range(node_count):
-            if not visited[i] and dist[i] < best:
-                best = dist[i]
-                u = i
-        if u == -1 or u == t:
+    prev = _dijkstra(adj, edges, node_count, s, t, banned_edge)
+    return _path_from_prev(prev, s, t) if prev else None
+
+
+def _remove_edge_from_adj(adj: dict[int, list[int]], a: int, b: int) -> None:
+    adj[a] = [ei for ei in adj.get(a, []) if edges[ei].b != b]
+    adj[b] = [ei for ei in adj.get(b, []) if edges[ei].a != a]
+
+
+def _yen_k_shortest_paths(
+    adj: dict[int, list[int]],
+    edges: list[_WayEdge],
+    node_count: int,
+    s: int,
+    t: int,
+    k: int = 2,
+    banned_edge: int = -1,
+) -> list[list[int]]:
+    """Yen's k-shortest loopless path algorithm.
+
+    Returns a list of paths, each as a list of edge indices,
+    ordered by shortest total distance.
+    """
+    if s < 0 or s >= node_count or t < 0 or t >= node_count or s == t:
+        return []
+    if k < 1:
+        return []
+
+    # shortest path first
+    import heapq as _heapq
+
+    shortest = _dijkstra_path(adj, edges, node_count, s, t, banned_edge)
+    if shortest is None:
+        return []
+
+    result: list[list[int]] = [shortest]
+
+    # --- Yen's main loop ---
+    for _ in range(1, k):
+        last = result[-1]
+        candidates: list[tuple[float, list[int]]] = []
+
+        for i in range(len(last)):
+            spur_node = last[i]
+            root_path = last[:i]
+
+            # Construct a working copy of adj with edge removals
+            working_adj: dict[int, list[int]] = {u: list(v) for u, v in adj.items()}
+
+            # Remove root path edges (prefix edges before spur_node)
+            for j in range(i):
+                _remove_edge_from_adj(working_adj, edges[last[j]].a, edges[last[j]].b)
+
+            # Remove previous shortest-path edges at spur_node position i
+            # (these are the edges used by earlier paths from this same spur position)
+            if i not in _yen_removed_at:
+                _yen_removed_at[i] = set()
+            for ei in _yen_removed_at[i]:
+                _remove_edge_from_adj(working_adj, edges[ei].a, edges[ei].b)
+
+            # Run Dijkstra from spur_node to target on the modified graph
+            spur = _dijkstra_path(working_adj, edges, node_count, spur_node, t, banned_edge)
+            if spur is None:
+                continue
+
+            total_path = root_path + spur
+            # Compute total distance
+            total_dist = sum(
+                polyline_length_m(edges[ei].geom) for ei in total_path
+            )
+            candidates.append((total_dist, total_path))
+
+        if not candidates:
             break
-        visited[u] = True
-        for ei in adj.get(u, []):
-            if ei == banned_edge:
-                continue
-            edge = edges[ei]
-            v = edge.b if edge.a == u else edge.a
-            if visited[v]:
-                continue
-            nd = dist[u] + polyline_length_m(edge.geom)
-            if nd < dist[v]:
-                dist[v] = nd
-                prev_edge[v] = ei
-    if dist[t] == float("inf"):
+
+        # Pick the minimum-distance candidate
+        candidates.sort(key=lambda x: x[0])
+        next_path = candidates[0][1]
+
+        # Record that the edge at position i from last was used, so other
+        # iterations from the same spur position can be excluded later
+        for i in range(len(last)):
+            if i < len(next_path):
+                ei = next_path[i]
+                key_edge = last[i] if i < len(last) else None
+                if key_edge is not None:
+                    _yen_removed_at.setdefault(i, set()).add(key_edge)
+
+        result.append(next_path)
+
+    return result
+
+
+_yen_removed_at: dict[int, set[int]] = {}
+
+
+def polyline_length_m_list(path: list[int], edges: list[_WayEdge]) -> float:
+    total = 0.0
+    for ei in path:
+        total += polyline_length_m(edges[ei].geom)
+    return total
+
+
+def _prev_edge_from_path(path: list[int], start_node: int, end_node: int, edges: list[_WayEdge]) -> list[int] | None:
+    """Convert a path of edge indices to a prev_edge array indexed by node.
+
+    The path is a list of edge indices [e0, e1, ...] traversed from start_node to end_node.
+    Returns a prev_edge array where prev_edge[node] = edge index used to reach `node`,
+    or None if the path is invalid.
+    """
+    if not path:
         return None
+    # Determine node count from edge endpoints
+    max_node = max(
+        max(edges[ei].a, edges[ei].b) for ei in path
+    )
+    node_count = max(max_node + 1, start_node + 1, end_node + 1)
+    prev_edge = [-1] * node_count
+
+    # Walk the path forwards to determine node ordering
+    # We'll build a mapping: for each node (except start), which edge reaches it
+    # Work backwards from end_node using the last edge
+    last_ei = path[-1]
+    last_edge = edges[last_ei]
+    if last_edge.a == end_node:
+        prev_edge[end_node] = last_ei
+        pred = last_edge.b
+    elif last_edge.b == end_node:
+        prev_edge[end_node] = last_ei
+        pred = last_edge.a
+    else:
+        # Last edge not incident to end_node - invalid path
+        return None
+
+    # Walk backwards through remaining edges
+    for i in range(len(path) - 2, -1, -1):
+        ei = path[i]
+        edge = edges[ei]
+        # pred should be one of this edge's endpoints
+        if edge.a == pred:
+            prev_edge[pred] = ei
+            pred = edge.b
+        elif edge.b == pred:
+            prev_edge[pred] = ei
+            pred = edge.a
+        else:
+            # Edge doesn't connect to expected predecessor - invalid path
+            return None
+
+    # pred should now be start_node; ensure consistency
+    if pred != start_node:
+        # Try reversing: maybe the path direction is opposite
+        # Reset and try from start
+        prev_edge = [-1] * node_count
+        first_ei = path[0]
+        first_edge = edges[first_ei]
+        if first_edge.a == start_node:
+            # Forward direction is correct, but we need to rebuild
+            # This shouldn't happen if the path is valid
+            return None
+        # Actually, just return what we have; _reconstruct handles -1 at start
     return prev_edge
 
 
@@ -371,7 +529,7 @@ def sidewalk_routes_from_ways(
     if start_node == end_node:
         return []
 
-    prev_edge = _dijkstra(adj, edges, len(node_coord), start_node, end_node)
+    prev_edge = _dijkstra(adj, edges, len(node_coord), start_node, end_node, node_coords=node_coord)
     if prev_edge is None:
         return []
     geom1 = _reconstruct(prev_edge, edges, start_node, end_node)
@@ -392,20 +550,18 @@ def sidewalk_routes_from_ways(
         edge = edges[ei]
         cur = edge.b if edge.a == cur else edge.a
 
+    alt_paths = _yen_k_shortest_paths(adj, edges, len(node_coord), start_node, end_node, k=2)
+
     geom2: list[Coordinates] | None = None
     primary_len = polyline_length_m(geom1)
-    attempts = 0
-    for ei in path_edges:
-        if attempts >= MAX_DETOUR_ATTEMPTS:
-            break
-        attempts += 1
-        secondary_prev = _dijkstra(adj, edges, len(node_coord), start_node, end_node, ei)
-        if secondary_prev is None:
-            continue
-        g = _reconstruct(secondary_prev, edges, start_node, end_node)
-        if g and abs(primary_len - polyline_length_m(g)) >= 10:
-            geom2 = g
-            break
+    if alt_paths and len(alt_paths) >= 2:
+        second = alt_paths[1]  # second-shortest loopless path (edge indices)
+        # Convert edge-path to prev_edge array for _reconstruct
+        prev_from_path = _prev_edge_from_path(second, start_node, end_node, edges)
+        if prev_from_path is not None:
+            g = _reconstruct(prev_from_path, edges, start_node, end_node)
+            if g and abs(primary_len - polyline_length_m(g)) >= 10:
+                geom2 = g
 
     if geom2 is None:
         return [

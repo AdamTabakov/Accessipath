@@ -7,11 +7,10 @@ import { EvidenceMarkers, PlaceMarker, RouteLayer, UnknownSections, endIcon, sta
 
 const TILE_URL =
   (import.meta.env.VITE_OSM_TILE_URL as string | undefined) ??
-  "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 const TILE_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ' +
-  '&copy; <a href="https://carto.com/attributions">CARTO</a>';
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 function FitBounds({
   start,
