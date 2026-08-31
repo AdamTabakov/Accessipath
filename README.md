@@ -60,7 +60,7 @@ Details: `backend/app/utils/clip_evaluation.py` provides `run_evaluation()` retu
 | Layer     | Technology |
 |-----------|------------|
 | Frontend  | React 18, TypeScript, Vite, Tailwind CSS v4, react-leaflet, React Router, lucide-react |
-| Backend   | Python 3.13, FastAPI, Pydantic (zod-equivalent validation), PyJWT, bcrypt, psycopg |
+| Backend   | Python 3.13, FastAPI, Pydantic, PyJWT, bcrypt, psycopg |
 | Data      | OpenStreetMap (tiles + Nominatim + Overpass), OSRM public routing, PostgreSQL + PostGIS (with in-memory fallback) |
 | AI        | Hugging Face Transformers.js — on-device zero-shot image classification (privacy-first) |
 | Hosting   | Render (web service + static site + free PostGIS + scheduled OSM refresh job) |
